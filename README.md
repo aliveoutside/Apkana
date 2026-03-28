@@ -10,9 +10,10 @@ Desktop GUI for common Android APK workflows.
 - Install APK with `adb install -r`
 
 ## Screenshots
-[Decode view](.github/screenshots/1.png)
-[Merge view](.github/screenshots/2.png)
-[Sign view](.github/screenshots/3.png)
+<img src=".github/screenshots/1.png" alt="Decode view" width="800">
+<img src=".github/screenshots/2.png" alt="Merge view" width="800">
+<img src=".github/screenshots/3.png" alt="Sign view" width="800">
+
 
 ## Runtime requirements
 
