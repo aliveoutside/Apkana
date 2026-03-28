@@ -1,0 +1,24 @@
+[package]
+name = "apkana"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+iced = { version = "0.14", default-features = false, features = ["wgpu", "thread-pool", "x11", "wayland"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "6"
+rfd = "0.15"
+resand = "0.2"
+zip = "2"
+serde_json = "1"
+
+[patch.crates-io]
+resand = { git = "https://codeberg.org/goldsmith1433/resand.git", rev = "ac62f1ddb3817f3da358f0f398774e8173f86c8d" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"
