@@ -9,6 +9,11 @@ Desktop GUI for common Android APK workflows.
 - Merge split packages (APKS/XAPK/APKM -> APK)
 - Install APK with `adb install -r`
 
+## Screenshots
+[Decode view](.github/screenshots/1.png)
+[Merge view](.github/screenshots/2.png)
+[Sign view](.github/screenshots/3.png)
+
 ## Runtime requirements
 
 `Apkana` calls external Android tools. Configure paths in app settings:
