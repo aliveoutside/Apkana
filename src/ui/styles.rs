@@ -10,7 +10,7 @@ pub const SECTION_TITLE_SIZE: f32 = 17.0;
 pub const LABEL_SIZE: f32 = 13.0;
 pub const BODY_SIZE: f32 = 13.0;
 pub const PRIMARY_BUTTON_TEXT_SIZE: f32 = 14.0;
-pub const HELPER_SIZE: f32 = 12.0;
+pub const SUPPORTING_TEXT_SIZE: f32 = 14.0;
 pub const CAPTION_SIZE: f32 = 11.0;
 
 pub const CARD_PADDING: f32 = 14.0;

@@ -31,7 +31,9 @@ pub fn view<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let row = MainTab::ALL
         .into_iter()
-        .fold(row!().spacing(styles::SPACE_8), |row, tab| {
+        .fold(
+            row!().spacing(styles::SPACE_8).align_y(iced::Alignment::Center),
+            |row, tab| {
             let is_active = tab == active;
 
             let tab_button = button(

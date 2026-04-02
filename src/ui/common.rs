@@ -37,8 +37,13 @@ pub fn section_title<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
 
 pub fn helper_text<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
     text(label)
-        .size(styles::HELPER_SIZE)
-        .style(text::secondary)
+        .size(styles::SUPPORTING_TEXT_SIZE)
+        .style(|theme: &Theme| {
+            let palette = theme.extended_palette();
+            iced::widget::text::Style {
+                color: Some(palette.background.base.text.scale_alpha(0.86)),
+            }
+        })
         .into()
 }
 
