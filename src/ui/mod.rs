@@ -1,4 +1,5 @@
 pub mod build_tab;
+pub mod common;
 pub mod decode_tab;
 pub mod install_tab;
 pub mod log_panel;

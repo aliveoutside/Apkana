@@ -1,9 +1,11 @@
 use iced::widget::{
-    button, column, container, progress_bar, row, rule, scrollable, stack, text, Space,
+    column, container, pane_grid, progress_bar, row, scrollable, stack, text,
+    Space,
 };
 use iced::{Background, Color, Element, Length, Theme};
 
 use crate::ui::build_tab;
+use crate::ui::common::{card, helper_text};
 use crate::ui::decode_tab;
 use crate::ui::install_tab;
 use crate::ui::log_panel;
@@ -13,69 +15,93 @@ use crate::ui::sign_tab;
 use crate::ui::styles;
 use crate::ui::tabs::{self, MainTab};
 
-use super::{ApkanaApp, Message};
+use super::{ApkanaApp, Message, ShellPane};
 
 impl ApkanaApp {
     pub fn view(&self) -> Element<'_, Message> {
-        let tabs = tabs::view(self.active_tab, Message::TabSelected);
+        let tabs = tabs::view(
+            self.active_tab,
+            Message::TabSelected,
+            Some(
+                iced::widget::button("Settings")
+                    .style(iced::widget::button::text)
+                    .on_press(Message::SettingsPressed)
+                    .into(),
+            ),
+        );
 
-        let content = match self.active_tab {
-            MainTab::DecodeBuild => row![
-                container(decode_tab::view(&self.decode, self.busy).map(Message::Decode))
-                    .width(Length::FillPortion(1)),
-                container(build_tab::view(&self.build, self.busy).map(Message::Build))
-                    .width(Length::FillPortion(1)),
-            ]
-            .spacing(styles::SPACE_16)
-            .align_y(iced::Alignment::Start)
-            .into(),
-            MainTab::Sign => sign_tab::view(&self.sign, self.busy).map(Message::Sign),
-            MainTab::Merge => merge_tab::view(&self.merge, self.busy).map(Message::Merge),
-            MainTab::Install => install_tab::view(&self.install, self.busy).map(Message::Install),
-        };
+        let top_bar = card(column![tabs]);
 
-        let top = row![
-            text("Apkana").size(styles::TITLE_SIZE),
-            Space::new().width(Length::Fill),
-            button("Settings")
-                .style(button::text)
-                .on_press(Message::SettingsPressed)
-        ]
-        .spacing(styles::SPACE_16)
-        .align_y(iced::Alignment::Center);
-
-        let mut body = column![top, rule::horizontal(1), tabs,]
-            .spacing(styles::SPACE_16)
-            .padding(styles::SPACE_16)
+        let mut body = column![top_bar]
+            .spacing(styles::SPACE_12)
+            .padding(styles::SPACE_12)
             .height(Length::Fill);
 
         if self.busy {
-            body = body.push(
-                row![
-                    text("Running...").size(styles::BODY_SIZE),
-                    container(progress_bar(0.0..=100.0, self.progress_value)).width(Length::Fill),
+            body = body.push(card(
+                column![
+                    row![
+                        text("Running task").size(styles::SECTION_TITLE_SIZE),
+                        Space::new().width(Length::Fill),
+                        text(format!("{:.0}%", self.progress_value)).size(styles::BODY_SIZE),
+                    ]
+                    .align_y(iced::Alignment::Center),
+                    helper_text("Apkana is executing an external tool. Output continues below in the output pane."),
+                    progress_bar(0.0..=100.0, self.progress_value),
                 ]
-                .spacing(styles::SPACE_8)
-                .align_y(iced::Alignment::Center),
-            );
+                .spacing(styles::SPACE_10),
+            ));
         }
 
         if !self.status_message.is_empty() {
-            body = body.push(
-                text(self.status_message.clone())
-                    .size(styles::BODY_SIZE)
-                    .style(text::primary),
-            );
+            body = body.push(card(
+                column![
+                    text("Status").size(styles::SECTION_TITLE_SIZE),
+                    text(self.status_message.clone())
+                        .size(styles::BODY_SIZE)
+                        .style(text::primary),
+                ]
+                .spacing(styles::SPACE_6),
+            ));
         }
 
-        body = body.push(
-            container(
-                scrollable(container(content).padding(styles::SPACE_16)).height(Length::Fill),
-            )
-            .height(Length::FillPortion(3)),
-        );
+        let pane_grid = pane_grid(&self.output_panes, |_, pane, _| {
+            let content: Element<'_, Message> = match pane {
+                ShellPane::Content => {
+                    let workflow_content = match self.active_tab {
+                        MainTab::DecodeBuild => row![
+                            container(decode_tab::view(&self.decode, self.busy).map(Message::Decode))
+                                .width(Length::FillPortion(1)),
+                            container(build_tab::view(&self.build, self.busy).map(Message::Build))
+                                .width(Length::FillPortion(1)),
+                        ]
+                        .spacing(styles::SPACE_16)
+                        .align_y(iced::Alignment::Start)
+                        .into(),
+                        MainTab::Sign => sign_tab::view(&self.sign, self.busy).map(Message::Sign),
+                        MainTab::Merge => {
+                            merge_tab::view(&self.merge, self.busy).map(Message::Merge)
+                        }
+                        MainTab::Install => {
+                            install_tab::view(&self.install, self.busy).map(Message::Install)
+                        }
+                    };
 
-        body = body.push(container(log_panel::view(&self.logs)).height(Length::FillPortion(2)));
+                    container(scrollable(workflow_content).height(Length::Fill))
+                        .height(Length::Fill)
+                        .into()
+                }
+                ShellPane::Output => log_panel::view(&self.logs),
+            };
+
+            pane_grid::Content::new(content)
+        })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(8)
+        .on_resize(12, Message::OutputResized);
+
+        body = body.push(container(pane_grid).height(Length::Fill));
 
         let base = container(body).width(Length::Fill).height(Length::Fill);
 
@@ -94,7 +120,7 @@ impl ApkanaApp {
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(styles::SPACE_24)
+            .padding(styles::SPACE_16)
             .center_x(Length::Fill)
             .center_y(Length::Fill);
 

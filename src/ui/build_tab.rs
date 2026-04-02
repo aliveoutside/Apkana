@@ -1,6 +1,7 @@
-use iced::widget::{button, checkbox, column, container, row, text, text_input};
+use iced::widget::{button, checkbox, column, row, text, text_input};
 use iced::{Element, Length};
 
+use crate::ui::common::{field_label, form_shell, helper_text, primary_action, section};
 use crate::ui::styles;
 
 #[derive(Debug, Clone, Default)]
@@ -44,58 +45,69 @@ pub fn view(state: &BuildTabState, busy: bool) -> Element<'_, BuildMessage> {
         zipalign_checkbox = zipalign_checkbox.on_toggle(BuildMessage::RunZipalignToggled);
     }
 
-    let mut sign_checkbox = checkbox(state.run_sign).label("Run sign after build");
+    let mut sign_checkbox = checkbox(state.run_sign).label("Run signing after zipalign");
     if state.can_toggle_sign() {
         sign_checkbox = sign_checkbox.on_toggle(BuildMessage::RunSignToggled);
     }
 
     let install_checkbox = checkbox(state.run_install)
-        .label("Auto-install via adb after pipeline")
+        .label("Auto-install with adb after the pipeline finishes")
         .on_toggle(BuildMessage::RunInstallToggled);
 
-    let card = column![
-        text("Build APK").size(styles::SECTION_TITLE_SIZE),
-        text("Decoded project directory").size(styles::BODY_SIZE),
-        row![
-            text_input("/path/to/decoded-project", &state.project_dir)
-                .on_input(BuildMessage::ProjectDirChanged)
-                .width(Length::Fill),
-            button("Browse")
-                .style(button::text)
-                .on_press(BuildMessage::BrowseProjectDir),
-        ]
-        .spacing(styles::SPACE_8),
-        text("Output APK (optional)").size(styles::BODY_SIZE),
-        row![
-            text_input("/path/to/output.apk", &state.output_apk)
-                .on_input(BuildMessage::OutputApkChanged)
-                .width(Length::Fill),
-            button("Browse")
-                .style(button::text)
-                .on_press(BuildMessage::BrowseOutputApk),
-        ]
-        .spacing(styles::SPACE_8),
-        text("Build options").size(styles::BODY_SIZE),
-        checkbox(state.force_all)
-            .label("Force rebuild (-f)")
-            .on_toggle(BuildMessage::ForceAllToggled),
-        checkbox(state.strip_debug_directives)
-            .label("OOM workaround: strip smali debug directives")
-            .on_toggle(BuildMessage::StripDebugDirectivesToggled),
-        text("Pipeline").size(styles::BODY_SIZE),
-        column![zipalign_checkbox, sign_checkbox, install_checkbox,].spacing(styles::SPACE_8),
-        button(text("Build").size(styles::BODY_SIZE + 1.0))
+    let content = column![
+        text("Build APK").size(styles::PAGE_TITLE_SIZE),
+        helper_text("Turn a decoded apktool project back into an APK, with optional post-build steps."),
+        section(
+            "Project",
+            Some("Select the decoded project directory. You can optionally choose an explicit output APK path."),
+            column![
+                field_label("Decoded project directory"),
+                row![
+                    text_input("/path/to/decoded-project", &state.project_dir)
+                        .on_input(BuildMessage::ProjectDirChanged)
+                        .width(Length::Fill),
+                    button("Browse")
+                        .style(button::text)
+                        .on_press(BuildMessage::BrowseProjectDir),
+                ]
+                .spacing(styles::SPACE_8),
+                field_label("Output APK (optional)"),
+                row![
+                    text_input("/path/to/output.apk", &state.output_apk)
+                        .on_input(BuildMessage::OutputApkChanged)
+                        .width(Length::Fill),
+                    button("Browse")
+                        .style(button::text)
+                        .on_press(BuildMessage::BrowseOutputApk),
+                ]
+                .spacing(styles::SPACE_8),
+            ],
+        ),
+        section(
+            "Build options",
+            Some("These affect how apktool rebuilds the package before any signing or install steps run."),
+            column![
+                checkbox(state.force_all)
+                    .label("Force rebuild (-f)")
+                    .on_toggle(BuildMessage::ForceAllToggled),
+                checkbox(state.strip_debug_directives)
+                    .label("Strip smali debug directives to reduce OOM risk")
+                    .on_toggle(BuildMessage::StripDebugDirectivesToggled),
+            ]
+            .spacing(styles::SPACE_10),
+        ),
+        section(
+            "Pipeline",
+            Some("Later steps depend on earlier ones. Install implies sign, and sign implies zipalign."),
+            column![zipalign_checkbox, sign_checkbox, install_checkbox].spacing(styles::SPACE_10),
+        ),
+        button(text("Build APK").size(styles::PRIMARY_BUTTON_TEXT_SIZE))
+            .style(primary_action)
             .width(Length::Fill)
-            .padding([styles::SPACE_8, styles::SPACE_16])
-            .on_press_maybe((!busy).then_some(BuildMessage::Start))
+            .padding([styles::SPACE_10, styles::SPACE_12])
+            .on_press_maybe((!busy).then_some(BuildMessage::Start)),
     ]
-    .spacing(styles::SPACE_8);
+    .spacing(styles::SPACE_10);
 
-    container(
-        container(card)
-            .style(container::rounded_box)
-            .padding(styles::SPACE_16),
-    )
-    .width(Length::Fill)
-    .into()
+    form_shell(content).into()
 }

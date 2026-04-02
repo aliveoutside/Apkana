@@ -11,6 +11,7 @@ use crate::ui::settings_modal::SettingsMessage;
 use crate::ui::sign_tab::{SignMessage, SignTabState};
 use crate::ui::tabs::MainTab;
 use crate::utils;
+use iced::widget::pane_grid;
 
 mod handlers;
 mod logging;
@@ -26,6 +27,12 @@ pub enum LogLevel {
     Error,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ShellPane {
+    Content,
+    Output,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     TabSelected(MainTab),
@@ -36,6 +43,7 @@ pub enum Message {
     Install(InstallMessage),
     SettingsPressed,
     Settings(SettingsMessage),
+    OutputResized(pane_grid::ResizeEvent),
     DecodeCompleted(Result<ToolResult, String>),
     BuildCompleted(Result<ToolResult, String>),
     ZipalignCompleted(Result<ToolResult, String>),
@@ -65,6 +73,7 @@ pub struct ApkanaApp {
     pending_install_apk_path: Option<String>,
     status_message: String,
     progress_value: f32,
+    output_panes: pane_grid::State<ShellPane>,
 }
 
 impl Default for ApkanaApp {
@@ -93,6 +102,15 @@ impl Default for ApkanaApp {
             apk_path: config.recent.install_apk_path.clone(),
         };
 
+        let (mut output_panes, root_pane) = pane_grid::State::new(ShellPane::Content);
+        if let Some((_pane, split)) = output_panes.split(
+            pane_grid::Axis::Horizontal,
+            root_pane,
+            ShellPane::Output,
+        ) {
+            output_panes.resize(split, 0.8);
+        }
+
         Self {
             config,
             settings_draft: None,
@@ -112,6 +130,7 @@ impl Default for ApkanaApp {
             pending_install_apk_path: None,
             status_message: String::new(),
             progress_value: 0.0,
+            output_panes,
         }
     }
 }
@@ -146,6 +165,10 @@ impl ApkanaApp {
             Message::Sign(msg) => self.update_sign(msg),
             Message::Merge(msg) => self.update_merge(msg),
             Message::Install(msg) => self.update_install(msg),
+            Message::OutputResized(event) => {
+                self.output_panes.resize(event.split, event.ratio);
+                Task::none()
+            }
             Message::DecodeCompleted(result) => {
                 self.busy = false;
                 self.progress_value = 0.0;
@@ -168,3 +191,4 @@ impl ApkanaApp {
         }
     }
 }
+
