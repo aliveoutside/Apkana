@@ -1,7 +1,7 @@
 use iced::widget::{button, column, row, text, text_input};
 use iced::{Element, Length};
 
-use crate::ui::common::{field_label, form_shell, helper_text, primary_action, section};
+use crate::ui::common::{browse_button, field_label, form_shell, primary_action, section};
 use crate::ui::styles;
 
 #[derive(Debug, Clone, Default)]
@@ -28,61 +28,61 @@ pub enum SignMessage {
 pub fn view(state: &SignTabState, busy: bool) -> Element<'_, SignMessage> {
     let content = column![
         text("Sign APK").size(styles::PAGE_TITLE_SIZE),
-        helper_text("Use your own keystore or fall back to the standard Android debug keystore."),
         section(
-            "Target",
-            Some("Choose the APK that should be signed."),
+            "Target APK",
             column![
                 field_label("APK file"),
                 row![
                     text_input("/path/to/app.apk", &state.apk_path)
+                        .size(styles::BODY_SIZE)
                         .on_input(SignMessage::ApkPathChanged)
                         .width(Length::Fill),
-                    button("Browse")
-                        .style(button::text)
-                        .on_press(SignMessage::BrowseApk),
+                    browse_button(SignMessage::BrowseApk),
                 ]
-                .spacing(styles::SPACE_8),
+                .spacing(styles::SPACE_6)
+                .align_y(iced::Alignment::Center),
             ],
         ),
         section(
-            "Signing credentials",
-            Some("Leave every signing field empty to use ~/.android/debug.keystore."),
+            "Keystore",
             column![
-                field_label("Keystore (optional)"),
+                field_label("Keystore file (leave empty for debug.keystore)"),
                 row![
                     text_input("/path/to/keystore.jks", &state.keystore_path)
+                        .size(styles::BODY_SIZE)
                         .on_input(SignMessage::KeystorePathChanged)
                         .width(Length::Fill),
-                    button("Browse")
-                        .style(button::text)
-                        .on_press(SignMessage::BrowseKeystore),
+                    browse_button(SignMessage::BrowseKeystore),
                 ]
-                .spacing(styles::SPACE_8),
-                field_label("Alias (optional)"),
-                text_input("Key alias", &state.alias)
+                .spacing(styles::SPACE_6)
+                .align_y(iced::Alignment::Center),
+                field_label("Key alias"),
+                text_input("Key alias (optional)", &state.alias)
+                    .size(styles::BODY_SIZE)
                     .on_input(SignMessage::AliasChanged)
                     .width(Length::Fill),
-                field_label("Keystore password (optional)"),
-                text_input("Keystore password", &state.keystore_pass)
+                field_label("Keystore password"),
+                text_input("Keystore password (optional)", &state.keystore_pass)
+                    .size(styles::BODY_SIZE)
                     .secure(true)
                     .on_input(SignMessage::KeystorePassChanged)
                     .width(Length::Fill),
-                field_label("Key password (optional)"),
-                text_input("Key password", &state.key_pass)
+                field_label("Key password"),
+                text_input("Key password (optional)", &state.key_pass)
+                    .size(styles::BODY_SIZE)
                     .secure(true)
                     .on_input(SignMessage::KeyPassChanged)
                     .width(Length::Fill),
             ]
-            .spacing(styles::SPACE_8),
+            .spacing(styles::SPACE_6),
         ),
-        button(text("Sign APK").size(styles::PRIMARY_BUTTON_TEXT_SIZE))
+        button(text("Sign APK").size(styles::BODY_SIZE))
             .style(primary_action)
             .width(Length::Fill)
-            .padding([styles::SPACE_10, styles::SPACE_12])
+            .padding([styles::SPACE_6, styles::SPACE_12])
             .on_press_maybe((!busy).then_some(SignMessage::Start)),
     ]
-    .spacing(styles::SPACE_10);
+    .spacing(styles::SECTION_GAP);
 
     form_shell(content).into()
 }

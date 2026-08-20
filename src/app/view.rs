@@ -1,11 +1,10 @@
 use iced::widget::{
-    column, container, pane_grid, progress_bar, row, scrollable, stack, text,
-    Space,
+    button, column, container, pane_grid, row, scrollable, stack, text, Space,
 };
 use iced::{Background, Color, Element, Length, Theme};
 
 use crate::ui::build_tab;
-use crate::ui::common::{card, helper_text};
+use crate::ui::common::{card, secondary_button};
 use crate::ui::decode_tab;
 use crate::ui::install_tab;
 use crate::ui::log_panel;
@@ -23,47 +22,15 @@ impl ApkanaApp {
             self.active_tab,
             Message::TabSelected,
             Some(
-                iced::widget::button("Settings")
-                    .style(iced::widget::button::text)
+                button(text("Settings").size(styles::BODY_SIZE))
+                    .style(secondary_button)
+                    .padding([styles::SPACE_5, styles::SPACE_10])
                     .on_press(Message::SettingsPressed)
                     .into(),
             ),
         );
 
         let top_bar = card(column![tabs]);
-
-        let mut body = column![top_bar]
-            .spacing(styles::SPACE_12)
-            .padding(styles::SPACE_12)
-            .height(Length::Fill);
-
-        if self.busy {
-            body = body.push(card(
-                column![
-                    row![
-                        text("Running task").size(styles::SECTION_TITLE_SIZE),
-                        Space::new().width(Length::Fill),
-                        text(format!("{:.0}%", self.progress_value)).size(styles::BODY_SIZE),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                    helper_text("Apkana is executing an external tool. Output continues below in the output pane."),
-                    progress_bar(0.0..=100.0, self.progress_value),
-                ]
-                .spacing(styles::SPACE_10),
-            ));
-        }
-
-        if !self.status_message.is_empty() {
-            body = body.push(card(
-                column![
-                    text("Status").size(styles::SECTION_TITLE_SIZE),
-                    text(self.status_message.clone())
-                        .size(styles::BODY_SIZE)
-                        .style(text::primary),
-                ]
-                .spacing(styles::SPACE_6),
-            ));
-        }
 
         let pane_grid = pane_grid(&self.output_panes, |_, pane, _| {
             let content: Element<'_, Message> = match pane {
@@ -87,9 +54,14 @@ impl ApkanaApp {
                         }
                     };
 
-                    container(scrollable(workflow_content).height(Length::Fill))
-                        .height(Length::Fill)
-                        .into()
+                    container(
+                        scrollable(workflow_content)
+                            .width(Length::Fill)
+                            .height(Length::Fill),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
                 }
                 ShellPane::Output => log_panel::view(&self.logs),
             };
@@ -101,7 +73,15 @@ impl ApkanaApp {
         .spacing(8)
         .on_resize(12, Message::OutputResized);
 
-        body = body.push(container(pane_grid).height(Length::Fill));
+        let body = column![
+            top_bar,
+            container(pane_grid)
+                .width(Length::Fill)
+                .height(Length::Fill)
+        ]
+        .spacing(styles::SPACE_12)
+        .padding(styles::SPACE_12)
+        .height(Length::Fill);
 
         let base = container(body).width(Length::Fill).height(Length::Fill);
 

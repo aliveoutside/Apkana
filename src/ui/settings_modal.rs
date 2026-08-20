@@ -2,7 +2,7 @@ use iced::widget::{button, column, row, text, text_input};
 use iced::{Element, Length};
 
 use crate::config::ToolPaths;
-use crate::ui::common::{field_label, form_shell, helper_text, primary_action, section};
+use crate::ui::common::{browse_button, field_label, form_shell, primary_action, secondary_button, section};
 use crate::ui::styles;
 
 #[derive(Debug, Clone)]
@@ -20,13 +20,12 @@ pub enum SettingsMessage {
 pub fn view(paths: &ToolPaths) -> Element<'_, SettingsMessage> {
     let content = column![
         text("Settings").size(styles::PAGE_TITLE_SIZE),
-        helper_text("Configure the external Android tools Apkana calls at runtime."),
         section(
             "Tool paths",
-            Some("These can point to binaries on PATH or absolute file paths."),
             column![
                 field_label("Java executable"),
                 text_input("java", &paths.java)
+                    .size(styles::BODY_SIZE)
                     .on_input(SettingsMessage::JavaChanged)
                     .width(Length::Fill),
                 field_label("apktool path (jar or executable)"),
@@ -35,38 +34,46 @@ pub fn view(paths: &ToolPaths) -> Element<'_, SettingsMessage> {
                         "/usr/bin/apktool or /path/to/apktool.jar",
                         &paths.apktool_jar
                     )
+                    .size(styles::BODY_SIZE)
                     .on_input(SettingsMessage::ApktoolJarChanged)
                     .width(Length::Fill),
-                    button("Browse")
-                        .style(button::text)
-                        .on_press(SettingsMessage::BrowseApktoolJar)
+                    browse_button(SettingsMessage::BrowseApktoolJar),
                 ]
-                .spacing(styles::SPACE_8),
+                .spacing(styles::SPACE_6)
+                .align_y(iced::Alignment::Center),
                 field_label("apksigner executable"),
                 text_input("apksigner", &paths.apksigner)
+                    .size(styles::BODY_SIZE)
                     .on_input(SettingsMessage::ApksignerChanged)
                     .width(Length::Fill),
                 field_label("zipalign executable"),
                 text_input("zipalign", &paths.zipalign)
+                    .size(styles::BODY_SIZE)
                     .on_input(SettingsMessage::ZipalignChanged)
                     .width(Length::Fill),
                 field_label("adb executable"),
                 text_input("adb", &paths.adb)
+                    .size(styles::BODY_SIZE)
                     .on_input(SettingsMessage::AdbChanged)
                     .width(Length::Fill),
             ]
-            .spacing(styles::SPACE_8),
+            .spacing(styles::SPACE_6),
         ),
         row![
             iced::widget::Space::new().width(Length::Fill),
-            button("Cancel")
-                .style(button::text)
+            button(text("Cancel").size(styles::BODY_SIZE))
+                .style(secondary_button)
+                .padding([styles::SPACE_6, styles::SPACE_16])
                 .on_press(SettingsMessage::Cancel),
-            button("Save").style(primary_action).padding([styles::SPACE_6, styles::SPACE_12]).on_press(SettingsMessage::Save)
+            button(text("Save").size(styles::BODY_SIZE))
+                .style(primary_action)
+                .padding([styles::SPACE_6, styles::SPACE_16])
+                .on_press(SettingsMessage::Save)
         ]
-        .spacing(styles::SPACE_8),
+        .spacing(styles::SPACE_8)
+        .align_y(iced::Alignment::Center),
     ]
-    .spacing(styles::SPACE_10);
+    .spacing(styles::SECTION_GAP);
 
     form_shell(content).max_width(styles::MAX_SETTINGS_WIDTH).into()
 }
