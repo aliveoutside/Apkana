@@ -7,7 +7,7 @@ Desktop GUI for common Android APK workflows.
 - Decode and rebuild APKs
 - Sign APKs
 - Merge split packages (APKS/XAPK/APKM -> APK)
-- Install APK with `adb install -r`
+- Install APK 
 
 ## Screenshots
 <img src=".github/screenshots/1.png" alt="Decode view" width="800">
@@ -17,15 +17,11 @@ Desktop GUI for common Android APK workflows.
 
 ## Runtime requirements
 
-`Apkana` calls external Android tools. Configure paths in app settings:
-
 - Java runtime
-- `apktool.jar`
+- `apktool`
 - `apksigner`
 - `zipalign`
 - `adb`
-
-Portable mode is supported: if `config.toml` is next to the executable, the app loads it from there.
 
 ## Local development
 
