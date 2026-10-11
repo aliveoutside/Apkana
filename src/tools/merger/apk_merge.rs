@@ -1,6 +1,11 @@
 use std::collections::HashSet;
 use std::io::{Cursor, Read};
 
+// Bound memory usage when unpacking nested APK ZIPs.
+const MAX_NESTED_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_UNPACKED_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_NESTED_ENTRIES: usize = 10_000;
+
 use zip::CompressionMethod;
 use zip::write::{SimpleFileOptions, ZipWriter};
 use zip::{ZipArchive, result::ZipError};
@@ -15,8 +20,20 @@ pub fn merge_splits(
     splits: &[SplitApk],
     output: &mut Vec<ToolOutput>,
 ) -> Result<Vec<u8>, String> {
+    // Feature split manifests cannot be merged by this implementation.
+    // Refuse unknown modules rather than silently dropping declared components.
+    if let Some(split) = splits.iter().find(|split| split.split_type == SplitType::Unknown) {
+        return Err(format!(
+            "Merge: unsupported split '{}' (possibly a dynamic feature); its manifest cannot safely be merged",
+            split.name
+        ));
+    }
     let mut base_archive = ZipArchive::new(Cursor::new(base_apk))
         .map_err(|e| format!("Merge: invalid base APK ZIP: {e}"))?;
+    if base_archive.len() > MAX_NESTED_ENTRIES {
+        return Err(String::from("Merge: too many base APK ZIP entries"));
+    }
+    let mut unpacked_total = 0u64;
 
     let mut out_writer = ZipWriter::new(Cursor::new(Vec::new()));
     let mut existing_entries = HashSet::new();
@@ -41,8 +58,12 @@ pub fn merge_splits(
         let name = entry.name().to_string();
         let compression = entry.compression();
 
+        if entry.size() > MAX_NESTED_ENTRY_BYTES {
+            return Err(format!("Merge: base entry '{name}' exceeds size limit"));
+        }
         let bytes = read_entry_bytes(&mut entry)
             .map_err(|e| format!("Merge: failed to read base APK entry '{name}': {e}"))?;
+        add_unpacked(&mut unpacked_total, bytes.len(), &name)?;
 
         if is_signature_artifact(&name) {
             continue;
@@ -81,6 +102,9 @@ pub fn merge_splits(
 
         let mut split_archive = ZipArchive::new(Cursor::new(split.data.as_slice()))
             .map_err(|e| format!("Merge: invalid split APK '{}': {e}", split.name))?;
+        if split_archive.len() > MAX_NESTED_ENTRIES {
+            return Err(format!("Merge: too many entries in split '{}'", split.name));
+        }
 
         if split.split_type == SplitType::Abi {
             has_abi_splits = true;
@@ -105,12 +129,16 @@ pub fn merge_splits(
                 continue;
             }
 
+            if entry.size() > MAX_NESTED_ENTRY_BYTES {
+                return Err(format!("Merge: split entry '{name}' exceeds size limit"));
+            }
             let bytes = read_entry_bytes(&mut entry).map_err(|e| {
                 format!(
                     "Merge: failed to read split entry '{}' in '{}': {e}",
                     name, split.name
                 )
             })?;
+            add_unpacked(&mut unpacked_total, bytes.len(), &name)?;
 
             if is_signature_artifact(&name) || name == "res/xml/splits0.xml" {
                 continue;
@@ -225,10 +253,23 @@ struct DeferredDex {
     compression: CompressionMethod,
 }
 
-fn read_entry_bytes(entry: &mut impl Read) -> Result<Vec<u8>, ZipError> {
+fn read_entry_bytes(entry: &mut impl Read) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes)?;
+    entry.take(MAX_NESTED_ENTRY_BYTES + 1).read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_NESTED_ENTRY_BYTES {
+        return Err(String::from("uncompressed ZIP entry exceeds 256 MiB limit"));
+    }
     Ok(bytes)
+}
+
+fn add_unpacked(total: &mut u64, size: usize, name: &str) -> Result<(), String> {
+    *total = total.saturating_add(size as u64);
+    if *total > MAX_UNPACKED_BYTES {
+        Err(format!("Merge: unpacked data exceeds 1 GiB limit at '{name}'"))
+    } else {
+        Ok(())
+    }
 }
 
 fn write_entry(
@@ -335,5 +376,27 @@ mod tests {
         assert!(!is_signature_artifact(
             "META-INF/com/android/build/gradle/app-metadata.properties"
         ));
+    }
+}
+
+#[cfg(test)]
+mod merge_safety_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unsupported_feature_module_before_reading_base() {
+        let split = SplitApk {
+            name: "feature_camera.apk".into(),
+            data: vec![],
+            split_type: SplitType::Unknown,
+        };
+        let error = merge_splits(&[], &[split], &mut vec![]).unwrap_err();
+        assert!(error.contains("unsupported split"));
+    }
+
+    #[test]
+    fn tracks_unpacked_limit() {
+        let mut size = MAX_UNPACKED_BYTES - 3;
+        assert!(add_unpacked(&mut size, 4, "huge.bin").is_err());
     }
 }
