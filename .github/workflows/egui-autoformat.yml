@@ -5,6 +5,7 @@ on:
     branches: [feat/egui-ui-migration]
     paths:
       - .github/workflows/egui-autoformat.yml
+      - src/app/view.rs
 
 permissions:
   contents: write
