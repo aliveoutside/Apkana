@@ -120,6 +120,7 @@ impl ApkanaApp {
                                 .map(Message::Install),
                         );
                     }
+                }
                 });
             });
         });
