@@ -18,7 +18,7 @@ jobs:
       - name: Install graphical dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xdotool scrot openbox libgl1-mesa-dri pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
+          sudo apt-get install -y xvfb xdotool scrot openbox libgl1-mesa-dri pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build Apkana
