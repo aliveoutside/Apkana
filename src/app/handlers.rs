@@ -111,7 +111,9 @@ impl ApkanaApp {
                 self.push_info("Starting build...");
                 let options = BuildOptions {
                     project_dir: self.build.project_dir.clone(),
-                    output_apk: self.build.output_apk.clone(),
+                    // Always tell apktool the exact output path; otherwise it
+                    // chooses <project-name>.apk, not the path used by pipeline.
+                    output_apk: self.build_output_apk_path(),
                     force_all: self.build.force_all,
                     strip_debug_directives: self.build.strip_debug_directives,
                 };

@@ -19,7 +19,11 @@ impl ApkanaApp {
         }
         if self.build.run_sign {
             let apk_path = if self.build.output_apk.trim().is_empty() {
-                format!("{}/dist/{}.apk", self.build.project_dir, "out")
+                std::path::Path::new(&self.build.project_dir)
+                    .join("dist")
+                    .join("out.apk")
+                    .to_string_lossy()
+                    .into_owned()
             } else {
                 self.build.output_apk.clone()
             };

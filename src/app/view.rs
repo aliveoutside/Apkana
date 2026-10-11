@@ -23,7 +23,7 @@ impl ApkanaApp {
                     }
                 }
                 ui.separator();
-                if ui.button("Settings").clicked() {
+                if ui.add_enabled(!self.busy, egui::Button::new("Settings")).clicked() {
                     messages.push(Message::SettingsPressed);
                 }
             });
@@ -81,8 +81,9 @@ impl ApkanaApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.add_space(8.0);
+            ui.add_enabled_ui(!self.busy, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.add_space(8.0);
                 match self.active_tab {
                     MainTab::DecodeBuild => {
                         ui.columns(2, |cols| {
@@ -119,7 +120,7 @@ impl ApkanaApp {
                                 .map(Message::Install),
                         );
                     }
-                }
+                });
             });
         });
 
@@ -144,7 +145,9 @@ impl ApkanaApp {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .show(ctx, |ui| {
-                    settings_events = settings_modal::show(ui, &draft);
+                    ui.add_enabled_ui(!self.busy, |ui| {
+                        settings_events = settings_modal::show(ui, &draft);
+                    });
                 });
             for event in settings_events {
                 self.dispatch(Message::Settings(event));

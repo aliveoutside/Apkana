@@ -163,6 +163,23 @@ impl ApkanaApp {
     }
 
     fn handle(&mut self, message: Message) -> Task<Message> {
+        // Ignore form updates and new operations while a background task owns the
+        // pipeline. This also prevents duplicate Start messages in one egui frame.
+        if self.busy
+            && matches!(
+                &message,
+                Message::Decode(_)
+                    | Message::Build(_)
+                    | Message::Sign(_)
+                    | Message::Merge(_)
+                    | Message::Install(_)
+                    | Message::SettingsPressed
+                    | Message::Settings(_)
+            )
+        {
+            return Task::none();
+        }
+
         match message {
             Message::TabSelected(tab) => {
                 self.active_tab = tab;

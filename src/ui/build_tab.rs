@@ -52,7 +52,7 @@ pub fn show(ui: &mut egui::Ui, state: &BuildTabState, busy: bool) -> Vec<BuildMe
         ui.add_space(8.0);
         let (changed, browse) = common::path(
             ui,
-            "Output APK (optional)",
+            "Output APK (optional; defaults to dist/out.apk)",
             "/path/to/output.apk",
             &state.output_apk,
         );
