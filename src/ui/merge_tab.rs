@@ -1,15 +1,10 @@
-use iced::widget::{button, column, row, text, text_input};
-use iced::{Element, Length};
-
-use crate::ui::common::{browse_button, field_label, form_shell, primary_action, section};
-use crate::ui::styles;
-
+use eframe::egui;
+use super::common;
 #[derive(Debug, Clone, Default)]
 pub struct MergeTabState {
     pub input_path: String,
     pub output_path: String,
 }
-
 #[derive(Debug, Clone)]
 pub enum MergeMessage {
     InputPathChanged(String),
@@ -18,42 +13,17 @@ pub enum MergeMessage {
     BrowseOutput,
     Start,
 }
-
-pub fn view(state: &MergeTabState, busy: bool) -> Element<'_, MergeMessage> {
-    let content = column![
-        text("Merge Split APKs").size(styles::PAGE_TITLE_SIZE),
-        section(
-            "Archive",
-            column![
-                field_label("Input archive (.apks, .xapk, .apkm)"),
-                row![
-                    text_input("/path/to/archive.apks", &state.input_path)
-                        .size(styles::BODY_SIZE)
-                        .on_input(MergeMessage::InputPathChanged)
-                        .width(Length::Fill),
-                    browse_button(MergeMessage::BrowseInput),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-                field_label("Output APK"),
-                row![
-                    text_input("/path/to/output.apk", &state.output_path)
-                        .size(styles::BODY_SIZE)
-                        .on_input(MergeMessage::OutputPathChanged)
-                        .width(Length::Fill),
-                    browse_button(MergeMessage::BrowseOutput),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-            ],
-        ),
-        button(text("Merge APK").size(styles::BODY_SIZE))
-            .style(primary_action)
-            .width(Length::Fill)
-            .padding([styles::SPACE_6, styles::SPACE_12])
-            .on_press_maybe((!busy).then_some(MergeMessage::Start)),
-    ]
-    .spacing(styles::SECTION_GAP);
-
-    form_shell(content).into()
+pub fn show(ui: &mut egui::Ui, state: &MergeTabState, busy: bool) -> Vec<MergeMessage> {
+    let mut events = Vec::new();
+    common::card(ui, "Merge Split APKs", |ui| {
+        let (changed, browse) = common::path(ui, "Input archive (.apks, .xapk, .apkm)", "/path/to/archive.apks", &state.input_path);
+        if let Some(v) = changed { events.push(MergeMessage::InputPathChanged(v)); }
+        if browse { events.push(MergeMessage::BrowseInput); }
+        ui.add_space(8.0);
+        let (changed, browse) = common::path(ui, "Output APK", "/path/to/output.apk", &state.output_path);
+        if let Some(v) = changed { events.push(MergeMessage::OutputPathChanged(v)); }
+        if browse { events.push(MergeMessage::BrowseOutput); }
+        if common::action(ui, "Merge APK", busy) { events.push(MergeMessage::Start); }
+    });
+    events
 }

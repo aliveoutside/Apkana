@@ -1,4 +1,4 @@
-use iced::Task;
+use super::Task;
 use std::path::Path;
 
 use crate::config;
@@ -54,7 +54,7 @@ impl ApkanaApp {
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    async move { apktool::decode(&paths, &options) },
+                    move || { apktool::decode(&paths, &options) },
                     Message::DecodeCompleted,
                 );
             }
@@ -117,7 +117,7 @@ impl ApkanaApp {
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    async move { apktool::build(&paths, &options) },
+                    move || { apktool::build(&paths, &options) },
                     Message::BuildCompleted,
                 );
             }
@@ -201,7 +201,7 @@ impl ApkanaApp {
                 };
 
                 return Task::perform(
-                    async move { merger::merge(options) },
+                    move || { merger::merge(options) },
                     Message::MergeCompleted,
                 );
             }

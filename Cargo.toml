@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-iced = { version = "0.14", default-features = false, features = ["wgpu", "thread-pool", "x11", "wayland"] }
+eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 dirs = "6"

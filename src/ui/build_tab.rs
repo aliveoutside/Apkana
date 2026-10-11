@@ -1,8 +1,5 @@
-use iced::widget::{button, checkbox, column, row, text, text_input};
-use iced::{Element, Length};
-
-use crate::ui::common::{browse_button, field_label, form_shell, primary_action, section};
-use crate::ui::styles;
+use eframe::egui;
+use super::common;
 
 #[derive(Debug, Clone, Default)]
 pub struct BuildTabState {
@@ -14,15 +11,9 @@ pub struct BuildTabState {
     pub run_sign: bool,
     pub run_install: bool,
 }
-
 impl BuildTabState {
-    pub fn can_toggle_zipalign(&self) -> bool {
-        !self.run_sign && !self.run_install
-    }
-
-    pub fn can_toggle_sign(&self) -> bool {
-        !self.run_install
-    }
+    pub fn can_toggle_zipalign(&self) -> bool { !self.run_sign && !self.run_install }
+    pub fn can_toggle_sign(&self) -> bool { !self.run_install }
 }
 
 #[derive(Debug, Clone)]
@@ -39,83 +30,40 @@ pub enum BuildMessage {
     Start,
 }
 
-pub fn view(state: &BuildTabState, busy: bool) -> Element<'_, BuildMessage> {
-    let mut zipalign_checkbox = checkbox(state.run_zipalign)
-        .label("Run zipalign")
-        .size(16)
-        .text_size(styles::BODY_SIZE);
-    if state.can_toggle_zipalign() {
-        zipalign_checkbox = zipalign_checkbox.on_toggle(BuildMessage::RunZipalignToggled);
-    }
-
-    let mut sign_checkbox = checkbox(state.run_sign)
-        .label("Sign APK (apksigner)")
-        .size(16)
-        .text_size(styles::BODY_SIZE);
-    if state.can_toggle_sign() {
-        sign_checkbox = sign_checkbox.on_toggle(BuildMessage::RunSignToggled);
-    }
-
-    let install_checkbox = checkbox(state.run_install)
-        .label("Install via adb (-r)")
-        .size(16)
-        .text_size(styles::BODY_SIZE)
-        .on_toggle(BuildMessage::RunInstallToggled);
-
-    let content = column![
-        text("Build APK").size(styles::PAGE_TITLE_SIZE),
-        section(
-            "Project",
-            column![
-                field_label("Decoded project directory"),
-                row![
-                    text_input("/path/to/decoded-project", &state.project_dir)
-                        .size(styles::BODY_SIZE)
-                        .on_input(BuildMessage::ProjectDirChanged)
-                        .width(Length::Fill),
-                    browse_button(BuildMessage::BrowseProjectDir),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-                field_label("Output APK (optional)"),
-                row![
-                    text_input("/path/to/output.apk", &state.output_apk)
-                        .size(styles::BODY_SIZE)
-                        .on_input(BuildMessage::OutputApkChanged)
-                        .width(Length::Fill),
-                    browse_button(BuildMessage::BrowseOutputApk),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-            ],
-        ),
-        section(
-            "Build options",
-            column![
-                checkbox(state.force_all)
-                    .label("Force rebuild (-f)")
-                    .size(16)
-                    .text_size(styles::BODY_SIZE)
-                    .on_toggle(BuildMessage::ForceAllToggled),
-                checkbox(state.strip_debug_directives)
-                    .label("Strip smali debug directives")
-                    .size(16)
-                    .text_size(styles::BODY_SIZE)
-                    .on_toggle(BuildMessage::StripDebugDirectivesToggled),
-            ]
-            .spacing(styles::SPACE_8),
-        ),
-        section(
-            "Pipeline",
-            column![zipalign_checkbox, sign_checkbox, install_checkbox].spacing(styles::SPACE_8),
-        ),
-        button(text("Build APK").size(styles::BODY_SIZE))
-            .style(primary_action)
-            .width(Length::Fill)
-            .padding([styles::SPACE_6, styles::SPACE_12])
-            .on_press_maybe((!busy).then_some(BuildMessage::Start)),
-    ]
-    .spacing(styles::SECTION_GAP);
-
-    form_shell(content).into()
+pub fn show(ui: &mut egui::Ui, state: &BuildTabState, busy: bool) -> Vec<BuildMessage> {
+    let mut events = Vec::new();
+    common::card(ui, "Build APK", |ui| {
+        let (changed, browse) = common::path(ui, "Decoded project directory", "/path/to/decoded-project", &state.project_dir);
+        if let Some(v) = changed { events.push(BuildMessage::ProjectDirChanged(v)); }
+        if browse { events.push(BuildMessage::BrowseProjectDir); }
+        ui.add_space(8.0);
+        let (changed, browse) = common::path(ui, "Output APK (optional)", "/path/to/output.apk", &state.output_apk);
+        if let Some(v) = changed { events.push(BuildMessage::OutputApkChanged(v)); }
+        if browse { events.push(BuildMessage::BrowseOutputApk); }
+        ui.separator();
+        ui.label(egui::RichText::new("Build options").strong());
+        if let Some(v) = common::toggle(ui, "Force rebuild (-f)", state.force_all) {
+            events.push(BuildMessage::ForceAllToggled(v));
+        }
+        if let Some(v) = common::toggle(ui, "Strip smali debug directives", state.strip_debug_directives) {
+            events.push(BuildMessage::StripDebugDirectivesToggled(v));
+        }
+        ui.separator();
+        ui.label(egui::RichText::new("Pipeline").strong());
+        ui.add_enabled_ui(state.can_toggle_zipalign(), |ui| {
+            if let Some(v) = common::toggle(ui, "Run zipalign", state.run_zipalign) {
+                events.push(BuildMessage::RunZipalignToggled(v));
+            }
+        });
+        ui.add_enabled_ui(state.can_toggle_sign(), |ui| {
+            if let Some(v) = common::toggle(ui, "Sign APK (apksigner)", state.run_sign) {
+                events.push(BuildMessage::RunSignToggled(v));
+            }
+        });
+        if let Some(v) = common::toggle(ui, "Install via adb (-r)", state.run_install) {
+            events.push(BuildMessage::RunInstallToggled(v));
+        }
+        if common::action(ui, "Build APK", busy) { events.push(BuildMessage::Start); }
+    });
+    events
 }

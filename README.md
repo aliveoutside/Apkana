@@ -1,19 +1,15 @@
 # Apkana
 
-Desktop GUI for common Android APK workflows.
+Desktop GUI built with **egui/eframe** for common Android APK workflows.
 
-## What it does
+## Features
 
-- Decode and rebuild APKs
-- Sign APKs
+- Decode and rebuild APKs using apktool
+- Sign APKs with apksigner, including debug keystore fallback
 - Merge split packages (APKS/XAPK/APKM -> APK)
-- Install APK 
-
-## Screenshots
-<img src=".github/screenshots/1.png" alt="Decode view" width="800">
-<img src=".github/screenshots/2.png" alt="Merge view" width="800">
-<img src=".github/screenshots/3.png" alt="Sign view" width="800">
-
+- Install APKs with adb
+- Optional build pipeline: zipalign → sign → install
+- Resizable output log panel, clipboard copy, and editable external tool paths
 
 ## Runtime requirements
 
@@ -28,10 +24,13 @@ Desktop GUI for common Android APK workflows.
 ```bash
 cargo check
 cargo test
+cargo run
 ```
 
-## Build
+## Release build
 
 ```bash
 cargo build --release
 ```
+
+Portable configuration from `config.toml` next to the binary is supported.

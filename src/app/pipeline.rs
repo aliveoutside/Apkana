@@ -1,4 +1,4 @@
-use iced::Task;
+use super::Task;
 
 use crate::tools::ToolResult;
 use crate::tools::adb::{self, InstallOptions};
@@ -46,7 +46,7 @@ impl ApkanaApp {
 
                 let paths = self.config.tools.clone();
                 Task::perform(
-                    async move {
+                    move || {
                         zipalign::run(
                             &paths,
                             &ZipalignOptions {
@@ -230,7 +230,7 @@ impl ApkanaApp {
 
         let paths = self.config.tools.clone();
         Task::perform(
-            async move { signer::sign(&paths, &options) },
+            move || { signer::sign(&paths, &options) },
             Message::SignCompleted,
         )
     }
@@ -249,7 +249,7 @@ impl ApkanaApp {
         };
         let paths = self.config.tools.clone();
         Task::perform(
-            async move { adb::install(&paths, &options) },
+            move || { adb::install(&paths, &options) },
             Message::InstallCompleted,
         )
     }

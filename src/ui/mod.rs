@@ -6,5 +6,4 @@ pub mod log_panel;
 pub mod merge_tab;
 pub mod settings_modal;
 pub mod sign_tab;
-pub mod styles;
 pub mod tabs;

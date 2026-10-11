@@ -1,4 +1,6 @@
-use iced::{Task, Theme};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
 
 use crate::config::{self, AppConfig};
 use crate::tools::ToolResult;
@@ -11,7 +13,6 @@ use crate::ui::settings_modal::SettingsMessage;
 use crate::ui::sign_tab::{SignMessage, SignTabState};
 use crate::ui::tabs::MainTab;
 use crate::utils;
-use iced::widget::pane_grid;
 
 mod handlers;
 mod logging;
@@ -27,12 +28,6 @@ pub enum LogLevel {
     Error,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ShellPane {
-    Content,
-    Output,
-}
-
 #[derive(Debug, Clone)]
 pub enum Message {
     TabSelected(MainTab),
@@ -43,15 +38,45 @@ pub enum Message {
     Install(InstallMessage),
     SettingsPressed,
     Settings(SettingsMessage),
-    OutputResized(pane_grid::ResizeEvent),
     DecodeCompleted(Result<ToolResult, String>),
     BuildCompleted(Result<ToolResult, String>),
     ZipalignCompleted(Result<ToolResult, String>),
     SignCompleted(Result<ToolResult, String>),
     InstallCompleted(Result<ToolResult, String>),
     MergeCompleted(Result<ToolResult, String>),
-    CopyLogs,
     ClearLogs,
+}
+
+/// One background operation; the GUI thread owns all state transitions.
+pub struct Task<T> {
+    start: Option<Box<dyn FnOnce(Sender<T>) + Send>>,
+}
+
+impl<T: Send + 'static> Task<T> {
+    pub fn none() -> Self {
+        Self { start: None }
+    }
+
+    pub fn perform<R, F, M>(work: F, finish: M) -> Self
+    where
+        R: Send + 'static,
+        F: FnOnce() -> R + Send + 'static,
+        M: FnOnce(R) -> T + Send + 'static,
+    {
+        Self {
+            start: Some(Box::new(move |sender| {
+                thread::spawn(move || {
+                    let _ = sender.send(finish(work()));
+                });
+            })),
+        }
+    }
+
+    fn spawn(self, sender: Sender<T>) {
+        if let Some(start) = self.start {
+            start(sender);
+        }
+    }
 }
 
 pub struct ApkanaApp {
@@ -73,7 +98,8 @@ pub struct ApkanaApp {
     pending_install_apk_path: Option<String>,
     status_message: String,
     progress_value: f32,
-    output_panes: pane_grid::State<ShellPane>,
+    events_tx: Sender<Message>,
+    events_rx: Receiver<Message>,
 }
 
 impl Default for ApkanaApp {
@@ -86,30 +112,19 @@ impl Default for ApkanaApp {
             output_dir: config.recent.decode_output_dir.clone(),
             ..DecodeTabState::default()
         };
-
         let build = BuildTabState {
             project_dir: config.recent.build_project_dir.clone(),
             output_apk: config.recent.build_output_apk.clone(),
             ..BuildTabState::default()
         };
-
         let merge = MergeTabState {
             input_path: config.recent.merge_input_path.clone(),
             output_path: config.recent.merge_output_path.clone(),
         };
-
         let install = InstallTabState {
             apk_path: config.recent.install_apk_path.clone(),
         };
-
-        let (mut output_panes, root_pane) = pane_grid::State::new(ShellPane::Content);
-        if let Some((_pane, split)) = output_panes.split(
-            pane_grid::Axis::Horizontal,
-            root_pane,
-            ShellPane::Output,
-        ) {
-            output_panes.resize(split, 0.8);
-        }
+        let (events_tx, events_rx) = mpsc::channel();
 
         Self {
             config,
@@ -130,25 +145,24 @@ impl Default for ApkanaApp {
             pending_install_apk_path: None,
             status_message: String::new(),
             progress_value: 0.0,
-            output_panes,
+            events_tx,
+            events_rx,
         }
     }
 }
 
 impl ApkanaApp {
-    pub fn new() -> (Self, Task<Message>) {
-        (Self::default(), Task::none())
+    fn dispatch(&mut self, message: Message) {
+        self.handle(message).spawn(self.events_tx.clone());
     }
 
-    pub fn title(&self) -> String {
-        String::from("Apkana")
+    fn drain_events(&mut self) {
+        while let Ok(message) = self.events_rx.try_recv() {
+            self.dispatch(message);
+        }
     }
 
-    pub fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    pub fn update(&mut self, message: Message) -> Task<Message> {
+    fn handle(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::TabSelected(tab) => {
                 self.active_tab = tab;
@@ -165,10 +179,6 @@ impl ApkanaApp {
             Message::Sign(msg) => self.update_sign(msg),
             Message::Merge(msg) => self.update_merge(msg),
             Message::Install(msg) => self.update_install(msg),
-            Message::OutputResized(event) => {
-                self.output_panes.resize(event.split, event.ratio);
-                Task::none()
-            }
             Message::DecodeCompleted(result) => {
                 self.busy = false;
                 self.progress_value = 0.0;
@@ -180,10 +190,6 @@ impl ApkanaApp {
             Message::SignCompleted(result) => self.handle_sign_completed(result),
             Message::InstallCompleted(result) => self.handle_install_completed(result),
             Message::MergeCompleted(result) => self.handle_merge_completed(result),
-            Message::CopyLogs => {
-                let text = self.logs_for_clipboard();
-                iced::clipboard::write(text)
-            }
             Message::ClearLogs => {
                 self.logs.clear();
                 Task::none()
@@ -192,3 +198,12 @@ impl ApkanaApp {
     }
 }
 
+impl eframe::App for ApkanaApp {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+        self.drain_events();
+        self.render_frame(ctx);
+        if self.busy {
+            ctx.request_repaint_after(Duration::from_millis(80));
+        }
+    }
+}

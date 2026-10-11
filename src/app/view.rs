@@ -1,112 +1,136 @@
-use iced::widget::{
-    button, column, container, pane_grid, row, scrollable, stack, text, Space,
-};
-use iced::{Background, Color, Element, Length, Theme};
+use eframe::egui;
 
-use crate::ui::build_tab;
-use crate::ui::common::{card, secondary_button};
-use crate::ui::decode_tab;
-use crate::ui::install_tab;
-use crate::ui::log_panel;
-use crate::ui::merge_tab;
-use crate::ui::settings_modal;
-use crate::ui::sign_tab;
-use crate::ui::styles;
-use crate::ui::tabs::{self, MainTab};
-
-use super::{ApkanaApp, Message, ShellPane};
+use crate::config::ThemeMode;
+use crate::ui::{build_tab, decode_tab, install_tab, merge_tab, settings_modal, sign_tab};
+use crate::ui::tabs::MainTab;
+use super::{ApkanaApp, LogLevel, Message};
 
 impl ApkanaApp {
-    pub fn view(&self) -> Element<'_, Message> {
-        let tabs = tabs::view(
-            self.active_tab,
-            Message::TabSelected,
-            Some(
-                button(text("Settings").size(styles::BODY_SIZE))
-                    .style(secondary_button)
-                    .padding([styles::SPACE_5, styles::SPACE_10])
-                    .on_press(Message::SettingsPressed)
-                    .into(),
-            ),
-        );
+    pub(super) fn render_frame(&mut self, ctx: &egui::Context) {
+        let mut messages = Vec::new();
 
-        let top_bar = card(column![tabs]);
-
-        let pane_grid = pane_grid(&self.output_panes, |_, pane, _| {
-            let content: Element<'_, Message> = match pane {
-                ShellPane::Content => {
-                    let workflow_content = match self.active_tab {
-                        MainTab::DecodeBuild => row![
-                            container(decode_tab::view(&self.decode, self.busy).map(Message::Decode))
-                                .width(Length::FillPortion(1)),
-                            container(build_tab::view(&self.build, self.busy).map(Message::Build))
-                                .width(Length::FillPortion(1)),
-                        ]
-                        .spacing(styles::SPACE_16)
-                        .align_y(iced::Alignment::Start)
-                        .into(),
-                        MainTab::Sign => sign_tab::view(&self.sign, self.busy).map(Message::Sign),
-                        MainTab::Merge => {
-                            merge_tab::view(&self.merge, self.busy).map(Message::Merge)
-                        }
-                        MainTab::Install => {
-                            install_tab::view(&self.install, self.busy).map(Message::Install)
-                        }
-                    };
-
-                    container(
-                        scrollable(workflow_content)
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                    )
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into()
+        egui::TopBottomPanel::top("navigation").show(ctx, |ui| {
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.heading("Apkana");
+                ui.separator();
+                for tab in MainTab::ALL {
+                    if ui.selectable_label(self.active_tab == tab, tab.title()).clicked() {
+                        messages.push(Message::TabSelected(tab));
+                    }
                 }
-                ShellPane::Output => log_panel::view(&self.logs),
-            };
+                ui.separator();
+                if ui.button("Settings").clicked() {
+                    messages.push(Message::SettingsPressed);
+                }
+            });
+            ui.add_space(6.0);
+        });
 
-            pane_grid::Content::new(content)
-        })
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(8)
-        .on_resize(12, Message::OutputResized);
+        let mut copy_logs = false;
+        let mut clear_logs = false;
+        egui::TopBottomPanel::bottom("output")
+            .resizable(true)
+            .default_height(210.0)
+            .min_height(110.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("OUTPUT").strong());
+                    if !self.status_message.is_empty() {
+                        ui.separator();
+                        ui.label(&self.status_message);
+                    }
+                    if self.busy {
+                        ui.spinner();
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        clear_logs = ui.button("Clear").clicked();
+                        copy_logs = ui.button("Copy").clicked();
+                    });
+                });
+                if self.busy {
+                    ui.add(egui::ProgressBar::new(
+                        (self.progress_value / 100.0).clamp(0.0, 1.0),
+                    ).show_percentage());
+                }
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        if self.logs.is_empty() {
+                            ui.label("Tool output will appear here...");
+                        }
+                        for entry in &self.logs {
+                            let (tag, color) = match entry.level {
+                                LogLevel::Info => ("INFO", egui::Color32::LIGHT_GRAY),
+                                LogLevel::Warn => ("WARN", egui::Color32::YELLOW),
+                                LogLevel::Error => ("ERROR", egui::Color32::LIGHT_RED),
+                            };
+                            ui.label(egui::RichText::new(format!("[{tag}] {}", entry.line))
+                                .monospace().color(color));
+                        }
+                    });
+            });
 
-        let body = column![
-            top_bar,
-            container(pane_grid)
-                .width(Length::Fill)
-                .height(Length::Fill)
-        ]
-        .spacing(styles::SPACE_12)
-        .padding(styles::SPACE_12)
-        .height(Length::Fill);
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.add_space(8.0);
+                match self.active_tab {
+                    MainTab::DecodeBuild => {
+                        ui.columns(2, |cols| {
+                            messages.extend(decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                .into_iter().map(Message::Decode));
+                            messages.extend(build_tab::show(&mut cols[1], &self.build, self.busy)
+                                .into_iter().map(Message::Build));
+                        });
+                    }
+                    MainTab::Sign => {
+                        messages.extend(sign_tab::show(ui, &self.sign, self.busy)
+                            .into_iter().map(Message::Sign));
+                    }
+                    MainTab::Merge => {
+                        messages.extend(merge_tab::show(ui, &self.merge, self.busy)
+                            .into_iter().map(Message::Merge));
+                    }
+                    MainTab::Install => {
+                        messages.extend(install_tab::show(ui, &self.install, self.busy)
+                            .into_iter().map(Message::Install));
+                    }
+                }
+            });
+        });
 
-        let base = container(body).width(Length::Fill).height(Length::Fill);
+        if copy_logs {
+            ctx.copy_text(self.logs_for_clipboard());
+        }
+        if clear_logs {
+            messages.push(Message::ClearLogs);
+        }
+        for message in messages {
+            self.dispatch(message);
+        }
 
         if self.show_settings {
-            let backdrop = container(Space::new().width(Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_theme: &Theme| iced::widget::container::Style {
-                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.45))),
-                    ..Default::default()
+            let draft = self.settings_draft.clone().unwrap_or_else(|| self.config.tools.clone());
+            let mut settings_events = Vec::new();
+            egui::Window::new("Settings")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    settings_events = settings_modal::show(ui, &draft);
                 });
+            for event in settings_events {
+                self.dispatch(Message::Settings(event));
+            }
+        }
+    }
 
-            let modal = container(
-                settings_modal::view(self.settings_draft.as_ref().unwrap_or(&self.config.tools))
-                    .map(Message::Settings),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding(styles::SPACE_16)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill);
-
-            stack![base, backdrop, modal].into()
-        } else {
-            base.into()
+    pub fn apply_theme(&self, ctx: &egui::Context) {
+        match self.config.theme_mode {
+            ThemeMode::Light => ctx.set_visuals(egui::Visuals::light()),
+            ThemeMode::Dark | ThemeMode::System => ctx.set_visuals(egui::Visuals::dark()),
         }
     }
 }
