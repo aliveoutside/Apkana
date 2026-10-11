@@ -22,7 +22,10 @@ pub fn merge_splits(
 ) -> Result<Vec<u8>, String> {
     // Feature split manifests cannot be merged by this implementation.
     // Refuse unknown modules rather than silently dropping declared components.
-    if let Some(split) = splits.iter().find(|split| split.split_type == SplitType::Unknown) {
+    if let Some(split) = splits
+        .iter()
+        .find(|split| split.split_type == SplitType::Unknown)
+    {
         return Err(format!(
             "Merge: unsupported split '{}' (possibly a dynamic feature); its manifest cannot safely be merged",
             split.name
@@ -255,7 +258,9 @@ struct DeferredDex {
 
 fn read_entry_bytes(entry: &mut impl Read) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    entry.take(MAX_NESTED_ENTRY_BYTES + 1).read_to_end(&mut bytes)
+    entry
+        .take(MAX_NESTED_ENTRY_BYTES + 1)
+        .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
     if bytes.len() as u64 > MAX_NESTED_ENTRY_BYTES {
         return Err(String::from("uncompressed ZIP entry exceeds 256 MiB limit"));
@@ -266,7 +271,9 @@ fn read_entry_bytes(entry: &mut impl Read) -> Result<Vec<u8>, String> {
 fn add_unpacked(total: &mut u64, size: usize, name: &str) -> Result<(), String> {
     *total = total.saturating_add(size as u64);
     if *total > MAX_UNPACKED_BYTES {
-        Err(format!("Merge: unpacked data exceeds 1 GiB limit at '{name}'"))
+        Err(format!(
+            "Merge: unpacked data exceeds 1 GiB limit at '{name}'"
+        ))
     } else {
         Ok(())
     }

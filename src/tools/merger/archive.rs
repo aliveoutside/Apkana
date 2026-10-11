@@ -86,7 +86,9 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
         ZipArchive::new(file).map_err(|e| format!("Merge: failed to read ZIP archive: {e}"))?;
 
     if archive.len() > MAX_ARCHIVE_ENTRIES {
-        return Err(format!("Merge: too many archive entries (>{MAX_ARCHIVE_ENTRIES})"));
+        return Err(format!(
+            "Merge: too many archive entries (>{MAX_ARCHIVE_ENTRIES})"
+        ));
     }
     let mut apk_entries: Vec<(String, Vec<u8>)> = Vec::new();
     let mut seen_apk_paths = HashSet::new();
@@ -109,14 +111,18 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
 
         if lower_name.ends_with(".apk") {
             if apk_entries.len() >= MAX_APK_ENTRIES {
-                return Err(format!("Merge: too many APK modules (maximum {MAX_APK_ENTRIES})"));
+                return Err(format!(
+                    "Merge: too many APK modules (maximum {MAX_APK_ENTRIES})"
+                ));
             }
             if !seen_apk_paths.insert(lower_name.clone()) {
                 return Err(format!("Merge: duplicate APK entry '{name}'"));
             }
             let declared = entry.size();
             if declared > MAX_APK_SIZE || unpacked_total.saturating_add(declared) > MAX_APKS_TOTAL {
-                return Err(format!("Merge: APK entry '{name}' exceeds safe size limits"));
+                return Err(format!(
+                    "Merge: APK entry '{name}' exceeds safe size limits"
+                ));
             }
             let bytes = read_limited(&mut entry, MAX_APK_SIZE, &name)?;
             unpacked_total = unpacked_total.saturating_add(bytes.len() as u64);
@@ -148,11 +154,16 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
     }
     // A bundletool .apks may contain incompatible standalone and split variants.
     // We cannot safely select the target variant without interpreting toc.pb.
-    if format == InputFormat::Apks && apk_entries.len() > 1 && apk_entries.iter().any(|(name, _)| {
-        let name = name.to_ascii_lowercase();
-        name.starts_with("standalones/") || name.starts_with("instant/")
-            || name.starts_with("universal/") || name.starts_with("asset-slices/")
-    }) {
+    if format == InputFormat::Apks
+        && apk_entries.len() > 1
+        && apk_entries.iter().any(|(name, _)| {
+            let name = name.to_ascii_lowercase();
+            name.starts_with("standalones/")
+                || name.starts_with("instant/")
+                || name.starts_with("universal/")
+                || name.starts_with("asset-slices/")
+        })
+    {
         return Err(String::from(
             "Merge: APKS contains standalone/instant/asset variants; select one compatible split set first",
         ));
@@ -181,8 +192,9 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
         }
     }
 
-    let base_index = choose_base_index(&apk_entries)
-        .ok_or_else(|| String::from("Merge: ambiguous base APK; expected exactly one base module"))?;
+    let base_index = choose_base_index(&apk_entries).ok_or_else(|| {
+        String::from("Merge: ambiguous base APK; expected exactly one base module")
+    })?;
 
     let (base_name, base_apk) = apk_entries.swap_remove(base_index);
     let mut splits = Vec::new();
@@ -208,26 +220,42 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
 }
 
 fn choose_base_index(entries: &[(String, Vec<u8>)]) -> Option<usize> {
-    let bases: Vec<usize> = entries.iter().enumerate().filter_map(|(i, (name, _))| {
-        let base = file_name_only(name).to_ascii_lowercase();
-        (base == "base.apk" || base == "base-master.apk").then_some(i)
-    }).collect();
-    if bases.len() == 1 { return bases.first().copied(); }
-    if bases.len() > 1 { return None; }
-    if entries.len() == 1 { return Some(0); }
+    let bases: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, _))| {
+            let base = file_name_only(name).to_ascii_lowercase();
+            (base == "base.apk" || base == "base-master.apk").then_some(i)
+        })
+        .collect();
+    if bases.len() == 1 {
+        return bases.first().copied();
+    }
+    if bases.len() > 1 {
+        return None;
+    }
+    if entries.len() == 1 {
+        return Some(0);
+    }
 
-    let candidates: Vec<usize> = entries.iter().enumerate().filter_map(|(i, (name, _))| {
-        (!looks_like_split_name(file_name_only(name))).then_some(i)
-    }).collect();
+    let candidates: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, _))| (!looks_like_split_name(file_name_only(name))).then_some(i))
+        .collect();
     (candidates.len() == 1).then(|| candidates[0])
 }
 
 fn read_limited<R: Read>(reader: &mut R, limit: u64, name: &str) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    reader.take(limit + 1).read_to_end(&mut bytes)
+    reader
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
         .map_err(|e| format!("Merge: failed to read '{name}': {e}"))?;
     if bytes.len() as u64 > limit {
-        return Err(format!("Merge: '{name}' exceeds safe uncompressed size limit"));
+        return Err(format!(
+            "Merge: '{name}' exceeds safe uncompressed size limit"
+        ));
     }
     Ok(bytes)
 }

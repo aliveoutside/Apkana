@@ -66,7 +66,10 @@ pub fn merge(options: MergeOptions) -> Result<ToolResult, String> {
     // be atomically replaced, fail without removing the previous APK.
     write_atomically(output_path, &merged_apk)?;
     if did_merge {
-        push_warn(&mut output, "Merged APK is unsigned. Sign it with the Sign tab before installing.");
+        push_warn(
+            &mut output,
+            "Merged APK is unsigned. Sign it with the Sign tab before installing.",
+        );
     }
     push_info(
         &mut output,
@@ -95,40 +98,58 @@ fn push_warn(output: &mut Vec<ToolOutput>, line: impl Into<String>) {
 }
 
 fn refuse_same_input_output(input: &Path, output: &Path) -> Result<(), String> {
-    let input = fs::canonicalize(input)
-        .map_err(|e| format!("Merge: cannot resolve input path: {e}"))?;
+    let input =
+        fs::canonicalize(input).map_err(|e| format!("Merge: cannot resolve input path: {e}"))?;
     let output_absolute = if output.exists() {
-        fs::canonicalize(output)
-            .map_err(|e| format!("Merge: cannot resolve output path: {e}"))?
+        fs::canonicalize(output).map_err(|e| format!("Merge: cannot resolve output path: {e}"))?
     } else {
-        let parent = output.parent()
+        let parent = output
+            .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         let parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-        parent.join(output.file_name().ok_or_else(|| String::from("Merge: invalid output filename"))?)
+        parent.join(
+            output
+                .file_name()
+                .ok_or_else(|| String::from("Merge: invalid output filename"))?,
+        )
     };
     if input == output_absolute {
-        return Err(String::from("Merge: input archive and output APK must be different files"));
+        return Err(String::from(
+            "Merge: input archive and output APK must be different files",
+        ));
     }
     Ok(())
 }
 
 fn write_atomically(destination: &Path, data: &[u8]) -> Result<(), String> {
-    let parent = destination.parent()
+    let parent = destination
+        .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     fs::create_dir_all(parent)
         .map_err(|e| format!("Merge: cannot create output directory: {e}"))?;
-    let name = destination.file_name()
+    let name = destination
+        .file_name()
         .ok_or_else(|| String::from("Merge: invalid output filename"))?;
 
     // Exclusive creation prevents collisions between concurrent app instances.
     let mut temp = None;
     for attempt in 0..100 {
-        let candidate = parent.join(format!(".{}-apkana-{}-{attempt}.tmp",
-            name.to_string_lossy(), std::process::id()));
-        match OpenOptions::new().write(true).create_new(true).open(&candidate) {
-            Ok(file) => { temp = Some((candidate, file)); break; }
+        let candidate = parent.join(format!(
+            ".{}-apkana-{}-{attempt}.tmp",
+            name.to_string_lossy(),
+            std::process::id()
+        ));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                temp = Some((candidate, file));
+                break;
+            }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("Merge: cannot create temporary output: {e}")),
         }
@@ -155,8 +176,8 @@ mod output_safety_tests {
 
     #[test]
     fn rejects_input_output_alias() {
-        let path = std::env::temp_dir()
-            .join(format!("apkana-merge-alias-{}.apks", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("apkana-merge-alias-{}.apks", std::process::id()));
         fs::write(&path, b"source").expect("create input");
         let rejected = refuse_same_input_output(&path, &path).is_err();
         let input_kept = fs::read(&path).unwrap() == b"source";

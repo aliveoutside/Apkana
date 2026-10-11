@@ -23,7 +23,10 @@ impl ApkanaApp {
                     }
                 }
                 ui.separator();
-                if ui.add_enabled(!self.busy, egui::Button::new("Settings")).clicked() {
+                if ui
+                    .add_enabled(!self.busy, egui::Button::new("Settings"))
+                    .clicked()
+                {
                     messages.push(Message::SettingsPressed);
                 }
             });
@@ -84,43 +87,43 @@ impl ApkanaApp {
             ui.add_enabled_ui(!self.busy, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.add_space(8.0);
-                match self.active_tab {
-                    MainTab::DecodeBuild => {
-                        ui.columns(2, |cols| {
+                    match self.active_tab {
+                        MainTab::DecodeBuild => {
+                            ui.columns(2, |cols| {
+                                messages.extend(
+                                    decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                        .into_iter()
+                                        .map(Message::Decode),
+                                );
+                                messages.extend(
+                                    build_tab::show(&mut cols[1], &self.build, self.busy)
+                                        .into_iter()
+                                        .map(Message::Build),
+                                );
+                            });
+                        }
+                        MainTab::Sign => {
                             messages.extend(
-                                decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                sign_tab::show(ui, &self.sign, self.busy)
                                     .into_iter()
-                                    .map(Message::Decode),
+                                    .map(Message::Sign),
                             );
+                        }
+                        MainTab::Merge => {
                             messages.extend(
-                                build_tab::show(&mut cols[1], &self.build, self.busy)
+                                merge_tab::show(ui, &self.merge, self.busy)
                                     .into_iter()
-                                    .map(Message::Build),
+                                    .map(Message::Merge),
                             );
-                        });
+                        }
+                        MainTab::Install => {
+                            messages.extend(
+                                install_tab::show(ui, &self.install, self.busy)
+                                    .into_iter()
+                                    .map(Message::Install),
+                            );
+                        }
                     }
-                    MainTab::Sign => {
-                        messages.extend(
-                            sign_tab::show(ui, &self.sign, self.busy)
-                                .into_iter()
-                                .map(Message::Sign),
-                        );
-                    }
-                    MainTab::Merge => {
-                        messages.extend(
-                            merge_tab::show(ui, &self.merge, self.busy)
-                                .into_iter()
-                                .map(Message::Merge),
-                        );
-                    }
-                    MainTab::Install => {
-                        messages.extend(
-                            install_tab::show(ui, &self.install, self.busy)
-                                .into_iter()
-                                .map(Message::Install),
-                        );
-                    }
-                }
                 });
             });
         });

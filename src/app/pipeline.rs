@@ -30,8 +30,10 @@ impl ApkanaApp {
                 let input_apk = self.build_output_apk_path();
                 let input = Path::new(&input_apk);
                 let stem = input.file_stem().unwrap_or_default().to_string_lossy();
-                let output_apk = input.with_file_name(format!("{stem}-aligned.apk"))
-                    .to_string_lossy().into_owned();
+                let output_apk = input
+                    .with_file_name(format!("{stem}-aligned.apk"))
+                    .to_string_lossy()
+                    .into_owned();
 
                 self.busy = true;
                 self.progress_value = 55.0;
@@ -292,7 +294,12 @@ mod pipeline_tests {
         let mut app = ApkanaApp::default();
         app.build.project_dir = "projects/example".into();
         app.build.output_apk.clear();
-        assert_eq!(app.build_output_apk_path(), Path::new("projects/example")
-            .join("dist").join("out.apk").to_string_lossy());
+        assert_eq!(
+            app.build_output_apk_path(),
+            Path::new("projects/example")
+                .join("dist")
+                .join("out.apk")
+                .to_string_lossy()
+        );
     }
 }
