@@ -363,8 +363,8 @@ fn push_warn(output: &mut Vec<ToolOutput>, line: impl Into<String>) {
 #[cfg(test)]
 mod tests {
     use super::{merge_resource_tables, merge_table_spec};
-    use resand::table::ResTableTypeSpec;
     use crate::tools::ToolOutput;
+    use resand::table::ResTableTypeSpec;
 
     #[test]
     fn keeps_base_resources_when_base_table_cannot_be_parsed() {

@@ -1,9 +1,9 @@
 use eframe::egui;
 
-use crate::config::ThemeMode;
-use crate::ui::{build_tab, decode_tab, install_tab, merge_tab, settings_modal, sign_tab};
-use crate::ui::tabs::MainTab;
 use super::{ApkanaApp, LogLevel, Message};
+use crate::config::ThemeMode;
+use crate::ui::tabs::MainTab;
+use crate::ui::{build_tab, decode_tab, install_tab, merge_tab, settings_modal, sign_tab};
 
 impl ApkanaApp {
     pub(super) fn render_frame(&mut self, ctx: &egui::Context) {
@@ -15,7 +15,10 @@ impl ApkanaApp {
                 ui.heading("Apkana");
                 ui.separator();
                 for tab in MainTab::ALL {
-                    if ui.selectable_label(self.active_tab == tab, tab.title()).clicked() {
+                    if ui
+                        .selectable_label(self.active_tab == tab, tab.title())
+                        .clicked()
+                    {
                         messages.push(Message::TabSelected(tab));
                     }
                 }
@@ -49,9 +52,10 @@ impl ApkanaApp {
                     });
                 });
                 if self.busy {
-                    ui.add(egui::ProgressBar::new(
-                        (self.progress_value / 100.0).clamp(0.0, 1.0),
-                    ).show_percentage());
+                    ui.add(
+                        egui::ProgressBar::new((self.progress_value / 100.0).clamp(0.0, 1.0))
+                            .show_percentage(),
+                    );
                 }
                 ui.separator();
                 egui::ScrollArea::vertical()
@@ -67,8 +71,11 @@ impl ApkanaApp {
                                 LogLevel::Warn => ("WARN", egui::Color32::YELLOW),
                                 LogLevel::Error => ("ERROR", egui::Color32::LIGHT_RED),
                             };
-                            ui.label(egui::RichText::new(format!("[{tag}] {}", entry.line))
-                                .monospace().color(color));
+                            ui.label(
+                                egui::RichText::new(format!("[{tag}] {}", entry.line))
+                                    .monospace()
+                                    .color(color),
+                            );
                         }
                     });
             });
@@ -79,23 +86,38 @@ impl ApkanaApp {
                 match self.active_tab {
                     MainTab::DecodeBuild => {
                         ui.columns(2, |cols| {
-                            messages.extend(decode_tab::show(&mut cols[0], &self.decode, self.busy)
-                                .into_iter().map(Message::Decode));
-                            messages.extend(build_tab::show(&mut cols[1], &self.build, self.busy)
-                                .into_iter().map(Message::Build));
+                            messages.extend(
+                                decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                    .into_iter()
+                                    .map(Message::Decode),
+                            );
+                            messages.extend(
+                                build_tab::show(&mut cols[1], &self.build, self.busy)
+                                    .into_iter()
+                                    .map(Message::Build),
+                            );
                         });
                     }
                     MainTab::Sign => {
-                        messages.extend(sign_tab::show(ui, &self.sign, self.busy)
-                            .into_iter().map(Message::Sign));
+                        messages.extend(
+                            sign_tab::show(ui, &self.sign, self.busy)
+                                .into_iter()
+                                .map(Message::Sign),
+                        );
                     }
                     MainTab::Merge => {
-                        messages.extend(merge_tab::show(ui, &self.merge, self.busy)
-                            .into_iter().map(Message::Merge));
+                        messages.extend(
+                            merge_tab::show(ui, &self.merge, self.busy)
+                                .into_iter()
+                                .map(Message::Merge),
+                        );
                     }
                     MainTab::Install => {
-                        messages.extend(install_tab::show(ui, &self.install, self.busy)
-                            .into_iter().map(Message::Install));
+                        messages.extend(
+                            install_tab::show(ui, &self.install, self.busy)
+                                .into_iter()
+                                .map(Message::Install),
+                        );
                     }
                 }
             });
@@ -112,7 +134,10 @@ impl ApkanaApp {
         }
 
         if self.show_settings {
-            let draft = self.settings_draft.clone().unwrap_or_else(|| self.config.tools.clone());
+            let draft = self
+                .settings_draft
+                .clone()
+                .unwrap_or_else(|| self.config.tools.clone());
             let mut settings_events = Vec::new();
             egui::Window::new("Settings")
                 .collapsible(false)

@@ -54,7 +54,7 @@ impl ApkanaApp {
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    move || { apktool::decode(&paths, &options) },
+                    move || apktool::decode(&paths, &options),
                     Message::DecodeCompleted,
                 );
             }
@@ -117,7 +117,7 @@ impl ApkanaApp {
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    move || { apktool::build(&paths, &options) },
+                    move || apktool::build(&paths, &options),
                     Message::BuildCompleted,
                 );
             }
@@ -200,10 +200,7 @@ impl ApkanaApp {
                     output_path: self.merge.output_path.clone(),
                 };
 
-                return Task::perform(
-                    move || { merger::merge(options) },
-                    Message::MergeCompleted,
-                );
+                return Task::perform(move || merger::merge(options), Message::MergeCompleted);
             }
         }
 

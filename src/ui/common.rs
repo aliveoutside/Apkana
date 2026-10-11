@@ -36,11 +36,13 @@ pub fn path(ui: &mut egui::Ui, label: &str, hint: &str, value: &str) -> (Option<
     let mut changed = false;
     let mut browse = false;
     ui.horizontal(|ui| {
-        changed = ui.add(
-            egui::TextEdit::singleline(&mut draft)
-                .hint_text(hint)
-                .desired_width((ui.available_width() - 84.0).max(100.0)),
-        ).changed();
+        changed = ui
+            .add(
+                egui::TextEdit::singleline(&mut draft)
+                    .hint_text(hint)
+                    .desired_width((ui.available_width() - 84.0).max(100.0)),
+            )
+            .changed();
         browse = ui.button("Browse").clicked();
     });
     (changed.then_some(draft), browse)
@@ -53,5 +55,9 @@ pub fn toggle(ui: &mut egui::Ui, label: &str, current: bool) -> Option<bool> {
 
 pub fn action(ui: &mut egui::Ui, label: &str, busy: bool) -> bool {
     ui.add_space(8.0);
-    ui.add_enabled(!busy, egui::Button::new(label).min_size(egui::vec2(135.0, 30.0))).clicked()
+    ui.add_enabled(
+        !busy,
+        egui::Button::new(label).min_size(egui::vec2(135.0, 30.0)),
+    )
+    .clicked()
 }

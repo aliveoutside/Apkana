@@ -1,6 +1,6 @@
-use eframe::egui;
-use crate::config::ToolPaths;
 use super::common;
+use crate::config::ToolPaths;
+use eframe::egui;
 #[derive(Debug, Clone)]
 pub enum SettingsMessage {
     JavaChanged(String),
@@ -19,9 +19,18 @@ pub fn show(ui: &mut egui::Ui, paths: &ToolPaths) -> Vec<SettingsMessage> {
         events.push(SettingsMessage::JavaChanged(v));
     }
     ui.add_space(6.0);
-    let (changed, browse) = common::path(ui, "apktool path (jar or executable)", "/path/to/apktool.jar", &paths.apktool_jar);
-    if let Some(v) = changed { events.push(SettingsMessage::ApktoolJarChanged(v)); }
-    if browse { events.push(SettingsMessage::BrowseApktoolJar); }
+    let (changed, browse) = common::path(
+        ui,
+        "apktool path (jar or executable)",
+        "/path/to/apktool.jar",
+        &paths.apktool_jar,
+    );
+    if let Some(v) = changed {
+        events.push(SettingsMessage::ApktoolJarChanged(v));
+    }
+    if browse {
+        events.push(SettingsMessage::BrowseApktoolJar);
+    }
     ui.add_space(6.0);
     if let Some(v) = common::field(ui, "apksigner executable", "apksigner", &paths.apksigner) {
         events.push(SettingsMessage::ApksignerChanged(v));
@@ -36,8 +45,12 @@ pub fn show(ui: &mut egui::Ui, paths: &ToolPaths) -> Vec<SettingsMessage> {
     }
     ui.add_space(12.0);
     ui.horizontal(|ui| {
-        if ui.button("Cancel").clicked() { events.push(SettingsMessage::Cancel); }
-        if ui.button("Save").clicked() { events.push(SettingsMessage::Save); }
+        if ui.button("Cancel").clicked() {
+            events.push(SettingsMessage::Cancel);
+        }
+        if ui.button("Save").clicked() {
+            events.push(SettingsMessage::Save);
+        }
     });
     events
 }

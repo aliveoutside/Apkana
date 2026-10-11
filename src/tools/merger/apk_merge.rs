@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use std::io::{Cursor, Read};
 
-use zip::write::{SimpleFileOptions, ZipWriter};
 use zip::CompressionMethod;
-use zip::{result::ZipError, ZipArchive};
+use zip::write::{SimpleFileOptions, ZipWriter};
+use zip::{ZipArchive, result::ZipError};
 
 use crate::tools::{OutputStream, ToolOutput};
 

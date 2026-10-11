@@ -1,5 +1,5 @@
-use eframe::egui;
 use super::common;
+use eframe::egui;
 
 #[derive(Debug, Clone, Default)]
 pub struct DecodeTabState {
@@ -27,13 +27,22 @@ pub fn show(ui: &mut egui::Ui, state: &DecodeTabState, busy: bool) -> Vec<Decode
     common::card(ui, "Decode APK", |ui| {
         let (changed, browse) = common::path(ui, "APK file", "/path/to/app.apk", &state.apk_path);
         {
-            if let Some(v) = changed { events.push(DecodeMessage::ApkPathChanged(v)); }
-            if browse { events.push(DecodeMessage::BrowseApk); }
+            if let Some(v) = changed {
+                events.push(DecodeMessage::ApkPathChanged(v));
+            }
+            if browse {
+                events.push(DecodeMessage::BrowseApk);
+            }
         }
         ui.add_space(8.0);
-        let (changed, browse) = common::path(ui, "Output directory", "/path/to/output", &state.output_dir);
-        if let Some(v) = changed { events.push(DecodeMessage::OutputDirChanged(v)); }
-        if browse { events.push(DecodeMessage::BrowseOutputDir); }
+        let (changed, browse) =
+            common::path(ui, "Output directory", "/path/to/output", &state.output_dir);
+        if let Some(v) = changed {
+            events.push(DecodeMessage::OutputDirChanged(v));
+        }
+        if browse {
+            events.push(DecodeMessage::BrowseOutputDir);
+        }
         ui.separator();
         ui.label(egui::RichText::new("Options").strong());
         if let Some(v) = common::toggle(ui, "Force overwrite existing output (-f)", state.force) {
@@ -45,7 +54,9 @@ pub fn show(ui: &mut egui::Ui, state: &DecodeTabState, busy: bool) -> Vec<Decode
         if let Some(v) = common::toggle(ui, "Skip resources (-r)", state.no_res) {
             events.push(DecodeMessage::NoResToggled(v));
         }
-        if common::action(ui, "Decode APK", busy) { events.push(DecodeMessage::Start); }
+        if common::action(ui, "Decode APK", busy) {
+            events.push(DecodeMessage::Start);
+        }
     });
     events
 }

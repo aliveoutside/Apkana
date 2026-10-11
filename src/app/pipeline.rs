@@ -230,7 +230,7 @@ impl ApkanaApp {
 
         let paths = self.config.tools.clone();
         Task::perform(
-            move || { signer::sign(&paths, &options) },
+            move || signer::sign(&paths, &options),
             Message::SignCompleted,
         )
     }
@@ -249,7 +249,7 @@ impl ApkanaApp {
         };
         let paths = self.config.tools.clone();
         Task::perform(
-            move || { adb::install(&paths, &options) },
+            move || adb::install(&paths, &options),
             Message::InstallCompleted,
         )
     }
