@@ -1,9 +1,17 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
 use serde_json::Value;
 use zip::ZipArchive;
+
+// Bounds for untrusted, uncompressed archive data.
+const MAX_ARCHIVE_ENTRIES: usize = 10_000;
+const MAX_APK_ENTRIES: usize = 128;
+const MAX_APK_SIZE: u64 = 512 * 1024 * 1024;
+const MAX_APKS_TOTAL: u64 = 1024 * 1024 * 1024;
+const MAX_MANIFEST_JSON: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFormat {
@@ -77,7 +85,12 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
     let mut archive =
         ZipArchive::new(file).map_err(|e| format!("Merge: failed to read ZIP archive: {e}"))?;
 
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(format!("Merge: too many archive entries (>{MAX_ARCHIVE_ENTRIES})"));
+    }
     let mut apk_entries: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut seen_apk_paths = HashSet::new();
+    let mut unpacked_total = 0u64;
     let mut warnings = Vec::new();
     let mut xapk_manifest: Option<Value> = None;
     let mut obb_count = 0usize;
@@ -95,19 +108,30 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
         let lower_name = name.to_ascii_lowercase();
 
         if lower_name.ends_with(".apk") {
-            let mut bytes = Vec::new();
-            entry
-                .read_to_end(&mut bytes)
-                .map_err(|e| format!("Merge: failed to read APK entry '{name}': {e}"))?;
+            if apk_entries.len() >= MAX_APK_ENTRIES {
+                return Err(format!("Merge: too many APK modules (maximum {MAX_APK_ENTRIES})"));
+            }
+            if !seen_apk_paths.insert(lower_name.clone()) {
+                return Err(format!("Merge: duplicate APK entry '{name}'"));
+            }
+            let declared = entry.size();
+            if declared > MAX_APK_SIZE || unpacked_total.saturating_add(declared) > MAX_APKS_TOTAL {
+                return Err(format!("Merge: APK entry '{name}' exceeds safe size limits"));
+            }
+            let bytes = read_limited(&mut entry, MAX_APK_SIZE, &name)?;
+            unpacked_total = unpacked_total.saturating_add(bytes.len() as u64);
+            if unpacked_total > MAX_APKS_TOTAL {
+                return Err(String::from("Merge: total APK data exceeds 1 GiB limit"));
+            }
             apk_entries.push((name, bytes));
             continue;
         }
 
         if lower_name.ends_with("manifest.json") {
-            let mut bytes = Vec::new();
-            entry
-                .read_to_end(&mut bytes)
-                .map_err(|e| format!("Merge: failed to read manifest.json: {e}"))?;
+            if entry.size() > MAX_MANIFEST_JSON {
+                return Err(String::from("Merge: manifest.json is too large"));
+            }
+            let bytes = read_limited(&mut entry, MAX_MANIFEST_JSON, "manifest.json")?;
             if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
                 xapk_manifest = Some(value);
             }
@@ -121,6 +145,17 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
 
     if apk_entries.is_empty() {
         return Err(String::from("Merge: no APK entries found in archive"));
+    }
+    // A bundletool .apks may contain incompatible standalone and split variants.
+    // We cannot safely select the target variant without interpreting toc.pb.
+    if format == InputFormat::Apks && apk_entries.len() > 1 && apk_entries.iter().any(|(name, _)| {
+        let name = name.to_ascii_lowercase();
+        name.starts_with("standalones/") || name.starts_with("instant/")
+            || name.starts_with("universal/") || name.starts_with("asset-slices/")
+    }) {
+        return Err(String::from(
+            "Merge: APKS contains standalone/instant/asset variants; select one compatible split set first",
+        ));
     }
 
     if format == InputFormat::Xapk {
@@ -147,7 +182,7 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
     }
 
     let base_index = choose_base_index(&apk_entries)
-        .ok_or_else(|| String::from("Merge: unable to determine base APK in archive"))?;
+        .ok_or_else(|| String::from("Merge: ambiguous base APK; expected exactly one base module"))?;
 
     let (base_name, base_apk) = apk_entries.swap_remove(base_index);
     let mut splits = Vec::new();
@@ -173,29 +208,28 @@ pub fn extract_split_set(path: &Path, format: InputFormat) -> Result<SplitSet, S
 }
 
 fn choose_base_index(entries: &[(String, Vec<u8>)]) -> Option<usize> {
-    let exact_base = entries.iter().position(|(name, _)| {
+    let bases: Vec<usize> = entries.iter().enumerate().filter_map(|(i, (name, _))| {
         let base = file_name_only(name).to_ascii_lowercase();
-        base == "base.apk" || base == "base-master.apk"
-    });
-    if exact_base.is_some() {
-        return exact_base;
-    }
+        (base == "base.apk" || base == "base-master.apk").then_some(i)
+    }).collect();
+    if bases.len() == 1 { return bases.first().copied(); }
+    if bases.len() > 1 { return None; }
+    if entries.len() == 1 { return Some(0); }
 
-    let non_split = entries
-        .iter()
-        .position(|(name, _)| !looks_like_split_name(file_name_only(name)));
-    if non_split.is_some() {
-        return non_split;
-    }
+    let candidates: Vec<usize> = entries.iter().enumerate().filter_map(|(i, (name, _))| {
+        (!looks_like_split_name(file_name_only(name))).then_some(i)
+    }).collect();
+    (candidates.len() == 1).then(|| candidates[0])
+}
 
-    if entries.len() == 1 {
-        Some(0)
-    } else {
-        entries
-            .iter()
-            .position(|(name, _)| file_name_only(name).to_ascii_lowercase().contains("base"))
-            .or(Some(0))
+fn read_limited<R: Read>(reader: &mut R, limit: u64, name: &str) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader.take(limit + 1).read_to_end(&mut bytes)
+        .map_err(|e| format!("Merge: failed to read '{name}': {e}"))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("Merge: '{name}' exceeds safe uncompressed size limit"));
     }
+    Ok(bytes)
 }
 
 fn looks_like_split_name(file_name: &str) -> bool {
@@ -347,5 +381,31 @@ mod tests {
             classify_split_type("feature_camera.apk"),
             SplitType::Unknown
         );
+    }
+}
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+
+    #[test]
+    fn does_not_guess_a_base_from_multiple_unknown_apks() {
+        let entries = vec![("a.apk".into(), vec![]), ("b.apk".into(), vec![])];
+        assert_eq!(choose_base_index(&entries), None);
+    }
+
+    #[test]
+    fn rejects_duplicate_base_candidates() {
+        let entries = vec![
+            ("variants/a/base.apk".into(), vec![]),
+            ("variants/b/base.apk".into(), vec![]),
+        ];
+        assert_eq!(choose_base_index(&entries), None);
+    }
+
+    #[test]
+    fn bounded_reader_rejects_oversized_content() {
+        let mut source = std::io::Cursor::new(vec![1u8; 33]);
+        assert!(read_limited(&mut source, 32, "nested.apk").is_err());
     }
 }
