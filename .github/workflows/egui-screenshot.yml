@@ -1,0 +1,64 @@
+name: Capture egui screenshot
+
+on:
+  push:
+    branches:
+      - feat/egui-ui-migration
+    paths:
+      - .github/workflows/egui-screenshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install graphical dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xdotool scrot openbox libgl1-mesa-dri pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Apkana
+        run: cargo build --locked
+      - name: Capture running application
+        run: |
+          mkdir -p screenshots
+          xvfb-run -a -s "-screen 0 1600x1000x24 -ac +extension GLX" bash -euo pipefail <<'SH'
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export GALLIUM_DRIVER=llvmpipe
+          openbox >/tmp/openbox.log 2>&1 &
+          ./target/debug/apkana >/tmp/apkana.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          window=""
+          for i in $(seq 1 40); do
+            window="$(xdotool search --onlyvisible --name 'Apkana' | head -n 1 || true)"
+            if [ -n "$window" ]; then break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then
+              cat /tmp/apkana.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ -z "$window" ]; then
+            cat /tmp/apkana.log
+            echo 'Apkana window not found'
+            exit 1
+          fi
+          xdotool windowactivate --sync "$window"
+          xdotool windowsize --sync "$window" 1280 900
+          xdotool windowmove --sync "$window" 100 40
+          sleep 4
+          scrot -u screenshots/apkana-egui.png
+          test -s screenshots/apkana-egui.png
+          SH
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apkana-egui-screenshot
+          path: screenshots/apkana-egui.png
+          if-no-files-found: warn
