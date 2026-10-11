@@ -176,7 +176,7 @@ impl ApkanaApp {
         Task::none()
     }
 
-    fn build_output_apk_path(&self) -> String {
+    pub(super) fn build_output_apk_path(&self) -> String {
         if self.build.output_apk.is_empty() {
             Path::new(&self.build.project_dir)
                 .join("dist")
