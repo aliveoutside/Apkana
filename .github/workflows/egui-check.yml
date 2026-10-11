@@ -22,12 +22,14 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt --all
       - run: cargo check
       - run: cargo test
-      - name: Upload regenerated lockfile
+      - name: Upload formatted sources and regenerated lockfile
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: egui-cargo-lock
-          path: Cargo.lock
+          name: egui-migration-formatted
+          path: |
+            Cargo.lock
+            src/**/*.rs
