@@ -1,0 +1,30 @@
+name: Commit egui formatting and lockfile
+
+on:
+  push:
+    branches:
+      - feat/egui-ui-migration
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.repository == 'aliveoutside/Apkana'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all
+      - run: cargo generate-lockfile
+      - name: Commit generated files to migration branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: format egui UI and regenerate Cargo.lock"
+            git push origin HEAD:feat/egui-ui-migration
+          fi
