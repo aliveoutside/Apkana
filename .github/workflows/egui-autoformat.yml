@@ -1,0 +1,29 @@
+name: Format migration fixes
+
+on:
+  push:
+    branches: [feat/egui-ui-migration]
+    paths:
+      - .github/workflows/egui-autoformat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all
+      - name: Commit formatted Rust sources
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: rustfmt pipeline and merge fixes'
+            git push origin HEAD:feat/egui-ui-migration
+          fi
