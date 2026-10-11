@@ -157,5 +157,12 @@ impl ApkanaApp {
             ThemeMode::Light => ctx.set_visuals(egui::Visuals::light()),
             ThemeMode::Dark | ThemeMode::System => ctx.set_visuals(egui::Visuals::dark()),
         }
+
+        // Increase all built-in text styles by one point throughout the UI.
+        ctx.style_mut(|style| {
+            for font in style.text_styles.values_mut() {
+                font.size += 1.0;
+            }
+        });
     }
 }
