@@ -2453,8 +2453,8 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "resand"
-version = "0.2.0"
-source = "git+https://codeberg.org/goldsmith1433/resand.git?rev=ac62f1ddb3817f3da358f0f398774e8173f86c8d#ac62f1ddb3817f3da358f0f398774e8173f86c8d"
+version = "0.3.0"
+source = "git+https://codeberg.org/fieryhenry/resand.git?rev=0f98ab5466fab86a2012411ec438c4d7e8a8f13d#0f98ab5466fab86a2012411ec438c4d7e8a8f13d"
 
 [[package]]
 name = "rfd"
