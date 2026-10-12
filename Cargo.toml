@@ -13,6 +13,9 @@ rfd = "0.15"
 resand = { git = "https://codeberg.org/fieryhenry/resand.git", rev = "0f98ab5466fab86a2012411ec438c4d7e8a8f13d" }
 zip = "2"
 serde_json = "1"
+tempfile = "3"
+sha1 = "0.10"
+adler2 = "2"
 
 [profile.release]
 lto = true

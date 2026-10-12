@@ -9,6 +9,8 @@ pub struct ToolPaths {
     pub apktool_jar: String,
     pub apksigner: String,
     pub zipalign: String,
+    #[serde(default = "default_aapt2_executable")]
+    pub aapt2: String,
     #[serde(default = "default_adb_executable")]
     pub adb: String,
 }
@@ -46,6 +48,10 @@ fn default_theme_mode() -> ThemeMode {
     ThemeMode::Dark
 }
 
+fn default_aapt2_executable() -> String {
+    String::from("aapt2")
+}
+
 fn default_adb_executable() -> String {
     String::from("adb")
 }
@@ -57,6 +63,7 @@ impl Default for ToolPaths {
             apktool_jar: String::new(),
             apksigner: String::from("apksigner"),
             zipalign: String::from("zipalign"),
+            aapt2: default_aapt2_executable(),
             adb: default_adb_executable(),
         }
     }

@@ -36,7 +36,14 @@ pub fn sanitize_manifest(
             let removed = remove_attributes(
                 manifest_node,
                 &lookup_pool,
-                &["splitTypes", "requiredSplitTypes"],
+                &[
+                    "split",
+                    "configForSplit",
+                    "isFeatureSplit",
+                    "splitTypes",
+                    "requiredSplitTypes",
+                    "isSplitRequired",
+                ],
             );
             if removed > 0 {
                 push_info(
@@ -45,6 +52,9 @@ pub fn sanitize_manifest(
                 );
             }
         }
+
+        root.children
+            .retain(|n| n.element.name.resolve(&lookup_pool) != Some("uses-split"));
 
         if let Some(app_node) = root.get_element_mut(&["manifest", "application"], &lookup_pool) {
             let removed = remove_attributes(app_node, &lookup_pool, &["isSplitRequired"]);
@@ -91,7 +101,7 @@ fn remove_attributes(node: &mut XMLTreeNode, strings: &StringPoolHandler, names:
         };
 
         let normalized = normalize_attr_name(name);
-        !names.iter().any(|target| *target == normalized)
+        !names.contains(&normalized)
     });
     before.saturating_sub(node.element.attributes.len())
 }
@@ -151,13 +161,14 @@ fn set_or_insert_extract_native_libs(
         return true;
     }
 
-    app_node.insert_attribute(
+    let attr = app_node.insert_attribute(
         Cow::Borrowed("extractNativeLibs"),
         ResValue::new_bool(true),
         string_pool,
         resource_map,
-        None,
+        Some(resand::defs::ResTableRef::new(0x010104ea)),
     );
+    attr.ns = string_pool.allocate(Cow::Borrowed("http://schemas.android.com/apk/res/android"));
     true
 }
 
@@ -170,4 +181,233 @@ fn push_info(output: &mut Vec<ToolOutput>, line: impl Into<String>) {
         line: line.into(),
         stream: OutputStream::Stdout,
     });
+}
+
+/// Import feature declarations with their string pool and Android attribute IDs.
+pub fn merge_manifests(
+    base: &[u8],
+    splits: &[Vec<u8>],
+    native: bool,
+    has_code: bool,
+    output: &mut Vec<ToolOutput>,
+) -> Result<Vec<u8>, String> {
+    let mut tree =
+        XMLTree::try_from(base).map_err(|e| format!("Merge: invalid base manifest: {e}"))?;
+    for bytes in splits {
+        let source = XMLTree::try_from(bytes.as_slice())
+            .map_err(|e| format!("Merge: invalid split manifest: {e}"))?;
+        for child in &source.root.children {
+            let tag = child
+                .element
+                .name
+                .resolve(&source.string_pool)
+                .ok_or("Merge: invalid manifest tag reference")?;
+            if tag == "uses-split" {
+                continue;
+            }
+            if tag == "uses-sdk" {
+                let base_sdk = tree
+                    .root
+                    .children
+                    .iter()
+                    .find(|n| n.element.name.resolve(&tree.string_pool) == Some("uses-sdk"));
+                for name in ["minSdkVersion", "targetSdkVersion", "maxSdkVersion"] {
+                    let split_value = super::metadata::attr(&source, child, name);
+                    if split_value.is_some()
+                        && split_value
+                            != base_sdk.and_then(|n| super::metadata::attr(&tree, n, name))
+                    {
+                        return Err(format!(
+                            "Merge: feature has incompatible SDK constraint '{name}'"
+                        ));
+                    }
+                }
+                continue;
+            }
+            if tag == "application" {
+                let mut imported = child.clone();
+                remap_node(&mut imported, &source, &mut tree)?;
+                let pool = tree.string_pool.clone();
+                let target = tree
+                    .root
+                    .get_element_mut(&["manifest", "application"], &pool)
+                    .ok_or("Merge: base has no application element")?;
+                // Configuration-only attributes do not change application semantics.
+                for attr in &imported.element.attributes {
+                    let name = attr
+                        .name
+                        .resolve(&pool)
+                        .ok_or("Merge: invalid application attribute")?;
+                    if matches!(name, "hasCode" | "splitName" | "isSplitRequired") {
+                        continue;
+                    }
+                    let existing = target
+                        .element
+                        .attributes
+                        .iter()
+                        .find(|a| a.name == attr.name && a.ns == attr.ns);
+                    if existing != Some(attr) {
+                        return Err(format!(
+                            "Merge: split changes application attribute '{name}'; cannot fuse safely"
+                        ));
+                    }
+                }
+                for n in imported.children {
+                    append_unique(&mut target.children, n, &pool)?;
+                }
+            } else {
+                if !matches!(
+                    tag,
+                    "uses-permission"
+                        | "uses-permission-sdk-23"
+                        | "permission"
+                        | "permission-group"
+                        | "permission-tree"
+                        | "uses-feature"
+                        | "queries"
+                ) {
+                    return Err(format!("Merge: unsupported split manifest element <{tag}>"));
+                }
+                let mut imported = child.clone();
+                remap_node(&mut imported, &source, &mut tree)?;
+                append_unique(&mut tree.root.children, imported, &tree.string_pool)?;
+            }
+        }
+    }
+    if has_code {
+        let pool = tree.string_pool.clone();
+        if let Some(app) = tree
+            .root
+            .get_element_mut(&["manifest", "application"], &pool)
+            && let Some(a) = app.get_attribute_mut("hasCode", &pool)
+        {
+            a.write_bool(true);
+        }
+    }
+    let bytes = Vec::<u8>::try_from(tree)
+        .map_err(|e| format!("Merge: cannot serialize merged manifest: {e}"))?;
+    sanitize_manifest(&bytes, native, output)
+}
+
+fn append_unique(
+    nodes: &mut Vec<XMLTreeNode>,
+    mut node: XMLTreeNode,
+    pool: &StringPoolHandler,
+) -> Result<(), String> {
+    // Remove split ownership now that the component lives in the base APK.
+    remove_attributes(&mut node, pool, &["splitName"]);
+    let name = node
+        .get_attribute("name", pool)
+        .and_then(|a| attribute_string_value(a, pool));
+    // Unnamed nodes (especially intent-filters) are independent declarations.
+    // Combining their actions/categories would change intent matching semantics.
+    if name.is_none() {
+        if !nodes.contains(&node) {
+            nodes.push(node);
+        }
+        return Ok(());
+    }
+    let tag = node.element.name;
+    if let Some(old) = nodes.iter_mut().find(|n| {
+        n.element.name == tag
+            && n.get_attribute("name", pool)
+                .and_then(|a| attribute_string_value(a, pool))
+                == name
+    }) {
+        if node.element.attributes != old.element.attributes {
+            return Err(format!(
+                "Merge: conflicting manifest declaration '{}'",
+                name.unwrap_or_default()
+            ));
+        }
+        for child in node.children {
+            append_unique(&mut old.children, child, pool)?;
+        }
+    } else {
+        nodes.push(node);
+    }
+    Ok(())
+}
+
+fn remap_node(
+    node: &mut XMLTreeNode,
+    source: &XMLTree,
+    target: &mut XMLTree,
+) -> Result<(), String> {
+    fn reference(
+        r: &mut resand::string_pool::ResStringPoolRef,
+        source: &XMLTree,
+        target: &mut XMLTree,
+    ) -> Result<(), String> {
+        if r.index == u32::MAX {
+            return Ok(());
+        }
+        let text = r
+            .resolve(&source.string_pool)
+            .ok_or("Merge: invalid manifest string reference")?
+            .to_owned();
+        *r = target.string_pool.allocate(Cow::Owned(text));
+        Ok(())
+    }
+    reference(&mut node.element.name, source, target)?;
+    reference(&mut node.element.ns, source, target)?;
+    reference(&mut node.element.node.comment, source, target)?;
+    if let Some(ns) = &mut node.namespace {
+        reference(&mut ns.prefix, source, target)?;
+        reference(&mut ns.uri, source, target)?;
+    }
+    for attr in &mut node.element.attributes {
+        let resource = source
+            .resource_map
+            .as_ref()
+            .and_then(|m| m.get(attr.name))
+            .copied();
+        reference(&mut attr.name, source, target)?;
+        reference(&mut attr.ns, source, target)?;
+        reference(&mut attr.raw_value, source, target)?;
+        if let ResValueType::String(r) = &mut attr.typed_value.data {
+            reference(r, source, target)?;
+        }
+        if let Some(id) = resource {
+            let map = target.resource_map.get_or_insert_with(|| ResourceMap {
+                mapping: Vec::new(),
+            });
+            if map
+                .get(attr.name)
+                .is_some_and(|old| !old.is_null() && *old != id)
+            {
+                return Err("Merge: conflicting Android manifest attribute IDs".into());
+            }
+            map.insert(attr.name, id);
+        }
+    }
+    for child in &mut node.children {
+        remap_node(child, source, target)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn independent_intent_filters_are_never_combined() {
+        let mut pool = StringPoolHandler::new_empty();
+        let tag = pool.allocate(Cow::Borrowed("intent-filter"));
+        let make = |action: &str, pool: &mut StringPoolHandler| {
+            let mut filter = XMLTreeNode::new();
+            filter.element.name = tag;
+            let mut child = XMLTreeNode::new();
+            child.element.name = pool.allocate(Cow::Borrowed(action));
+            filter.children.push(child);
+            filter
+        };
+        let first = make("first-action", &mut pool);
+        let second = make("second-action", &mut pool);
+        let mut nodes = vec![first];
+        append_unique(&mut nodes, second, &pool).unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].children.len(), 1);
+        assert_eq!(nodes[1].children.len(), 1);
+    }
 }

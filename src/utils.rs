@@ -49,6 +49,7 @@ pub fn discover_tools(current: &ToolPaths) -> ToolPaths {
         apktool_jar: fallback_apktool_jar(&current.apktool_jar),
         apksigner: fallback_executable(&current.apksigner, "apksigner"),
         zipalign: fallback_executable(&current.zipalign, "zipalign"),
+        aapt2: fallback_executable(&current.aapt2, "aapt2"),
         adb: fallback_executable(&current.adb, "adb"),
     }
 }

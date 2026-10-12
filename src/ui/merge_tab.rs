@@ -37,6 +37,7 @@ pub fn show(ui: &mut egui::Ui, state: &MergeTabState, busy: bool) -> Vec<MergeMe
         if browse {
             events.push(MergeMessage::BrowseOutput);
         }
+        ui.label("The result is aligned, signed with the key from the Sign tab (debug key by default), and verified before saving.");
         if common::action(ui, "Merge APK", busy) {
             events.push(MergeMessage::Start);
         }

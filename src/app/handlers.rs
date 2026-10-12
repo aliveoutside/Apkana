@@ -202,7 +202,30 @@ impl ApkanaApp {
                     output_path: self.merge.output_path.clone(),
                 };
 
-                return Task::perform(move || merger::merge(options), Message::MergeCompleted);
+                let paths = self.config.tools.clone();
+                let signing = if self.use_default_debug_signing() {
+                    crate::tools::signer::SignOptions {
+                        apk_path: String::new(),
+                        keystore_path: Self::default_debug_keystore_path()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        alias: "androiddebugkey".into(),
+                        keystore_pass: "android".into(),
+                        key_pass: "android".into(),
+                    }
+                } else {
+                    crate::tools::signer::SignOptions {
+                        apk_path: String::new(),
+                        keystore_path: self.sign.keystore_path.clone(),
+                        alias: self.sign.alias.clone(),
+                        keystore_pass: self.sign.keystore_pass.clone(),
+                        key_pass: self.sign.key_pass.clone(),
+                    }
+                };
+                return Task::perform(
+                    move || merger::merge(&paths, options, signing),
+                    Message::MergeCompleted,
+                );
             }
         }
 
@@ -246,6 +269,11 @@ impl ApkanaApp {
                 self.settings_draft
                     .get_or_insert_with(|| self.config.tools.clone())
                     .apktool_jar = v;
+            }
+            SettingsMessage::Aapt2Changed(v) => {
+                self.settings_draft
+                    .get_or_insert_with(|| self.config.tools.clone())
+                    .aapt2 = v;
             }
             SettingsMessage::ApksignerChanged(v) => {
                 self.settings_draft

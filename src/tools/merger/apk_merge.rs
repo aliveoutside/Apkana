@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
 // Bound memory usage when unpacking nested APK ZIPs.
@@ -20,17 +20,6 @@ pub fn merge_splits(
     splits: &[SplitApk],
     output: &mut Vec<ToolOutput>,
 ) -> Result<Vec<u8>, String> {
-    // Feature split manifests cannot be merged by this implementation.
-    // Refuse unknown modules rather than silently dropping declared components.
-    if let Some(split) = splits
-        .iter()
-        .find(|split| split.split_type == SplitType::Unknown)
-    {
-        return Err(format!(
-            "Merge: unsupported split '{}' (possibly a dynamic feature); its manifest cannot safely be merged",
-            split.name
-        ));
-    }
     let mut base_archive = ZipArchive::new(Cursor::new(base_apk))
         .map_err(|e| format!("Merge: invalid base APK ZIP: {e}"))?;
     if base_archive.len() > MAX_NESTED_ENTRIES {
@@ -40,13 +29,17 @@ pub fn merge_splits(
 
     let mut out_writer = ZipWriter::new(Cursor::new(Vec::new()));
     let mut existing_entries = HashSet::new();
+    let mut payloads: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut split_manifests = Vec::new();
+    let mut classes = HashSet::new();
+    let mut base_seen = HashSet::new();
     let mut deferred_dex = Vec::new();
     let mut split_arsc_tables: Vec<Vec<u8>> = Vec::new();
 
     let mut base_manifest: Option<Vec<u8>> = None;
     let mut base_resources: Option<Vec<u8>> = None;
     let mut manifest_compression = CompressionMethod::Deflated;
-    let mut resources_compression = CompressionMethod::Deflated;
+
     let mut has_abi_splits = false;
 
     for i in 0..base_archive.len() {
@@ -60,6 +53,10 @@ pub fn merge_splits(
 
         let name = entry.name().to_string();
         let compression = entry.compression();
+        validate_dex_filename(&name)?;
+        if !base_seen.insert(name.clone()) {
+            return Err(format!("Merge: duplicate base ZIP entry {name}"));
+        }
 
         if entry.size() > MAX_NESTED_ENTRY_BYTES {
             return Err(format!("Merge: base entry '{name}' exceeds size limit"));
@@ -79,17 +76,19 @@ pub fn merge_splits(
         }
 
         if name == "resources.arsc" {
-            resources_compression = compression;
             base_resources = Some(bytes);
             continue;
         }
 
-        if name == "res/xml/splits0.xml" {
-            continue;
+        if name.starts_with("lib/") {
+            has_abi_splits = true;
         }
-
         write_entry(&mut out_writer, &name, compression, &bytes)
             .map_err(|e| format!("Merge: failed to copy base APK entry '{name}': {e}"))?;
+        if is_dex_file(&name) {
+            super::dex::collect_classes(&bytes, &mut classes)?;
+        }
+        payloads.insert(name.clone(), bytes);
         existing_entries.insert(name);
     }
 
@@ -113,6 +112,7 @@ pub fn merge_splits(
             has_abi_splits = true;
         }
 
+        let mut seen = HashSet::new();
         for i in 0..split_archive.len() {
             let mut entry = split_archive.by_index(i).map_err(|e| {
                 format!(
@@ -127,9 +127,13 @@ pub fn merge_splits(
 
             let name = entry.name().to_string();
             let compression = entry.compression();
+            validate_dex_filename(&name)?;
 
-            if name == "AndroidManifest.xml" {
-                continue;
+            if !seen.insert(name.clone()) {
+                return Err(format!(
+                    "Merge: duplicate ZIP entry {name} in {}",
+                    split.name
+                ));
             }
 
             if entry.size() > MAX_NESTED_ENTRY_BYTES {
@@ -143,7 +147,12 @@ pub fn merge_splits(
             })?;
             add_unpacked(&mut unpacked_total, bytes.len(), &name)?;
 
-            if is_signature_artifact(&name) || name == "res/xml/splits0.xml" {
+            if name == "AndroidManifest.xml" {
+                split_manifests.push(bytes);
+                continue;
+            }
+
+            if is_signature_artifact(&name) {
                 continue;
             }
 
@@ -153,6 +162,7 @@ pub fn merge_splits(
             }
 
             if is_dex_file(&name) {
+                super::dex::collect_classes(&bytes, &mut classes)?;
                 deferred_dex.push(DeferredDex {
                     source_name: name,
                     bytes,
@@ -162,7 +172,12 @@ pub fn merge_splits(
             }
 
             if existing_entries.contains(&name) {
-                push_warn(output, format!("Skipping duplicate split entry: {name}"));
+                if payloads.get(&name) != Some(&bytes) {
+                    return Err(format!(
+                        "Merge: conflicting ZIP payload {name} in {}; refusing data loss",
+                        split.name
+                    ));
+                }
                 continue;
             }
 
@@ -176,6 +191,7 @@ pub fn merge_splits(
                     name, split.name
                 )
             })?;
+            payloads.insert(name.clone(), bytes);
             existing_entries.insert(name);
         }
     }
@@ -200,9 +216,19 @@ pub fn merge_splits(
         next_dex_index += 1;
     }
 
+    let count = existing_entries.iter().filter(|n| is_dex_file(n)).count();
+    if (1..=count).any(|i| !existing_entries.contains(&dex_name(i))) {
+        return Err("Merge: non-contiguous DEX filenames; Android would skip code".into());
+    }
+    validate_native_sets(&payloads)?;
     if let Some(manifest_bytes) = base_manifest {
-        let sanitized_manifest =
-            manifest::sanitize_manifest(&manifest_bytes, has_abi_splits, output)?;
+        let sanitized_manifest = manifest::merge_manifests(
+            &manifest_bytes,
+            &split_manifests,
+            has_abi_splits,
+            !classes.is_empty(),
+            output,
+        )?;
         write_entry(
             &mut out_writer,
             "AndroidManifest.xml",
@@ -211,18 +237,16 @@ pub fn merge_splits(
         )
         .map_err(|e| format!("Merge: failed to write sanitized AndroidManifest.xml: {e}"))?;
     } else {
-        push_warn(
-            output,
-            String::from("Base APK did not contain AndroidManifest.xml; output may be invalid"),
-        );
+        return Err("Merge: base APK has no manifest".into());
     }
 
     if let Some(base_arsc) = base_resources {
         let merged_arsc = resources::merge_resource_tables(&base_arsc, &split_arsc_tables, output)?;
+        resources::validate_file_references(&merged_arsc, &existing_entries)?;
         write_entry(
             &mut out_writer,
             "resources.arsc",
-            resources_compression,
+            CompressionMethod::Stored,
             &merged_arsc,
         )
         .map_err(|e| format!("Merge: failed to write merged resources.arsc: {e}"))?;
@@ -233,10 +257,11 @@ pub fn merge_splits(
             .ok_or_else(|| String::from("Merge: missing first split resources.arsc"))?;
         let remaining: Vec<Vec<u8>> = iter.collect();
         let merged_arsc = resources::merge_resource_tables(&first, &remaining, output)?;
+        resources::validate_file_references(&merged_arsc, &existing_entries)?;
         write_entry(
             &mut out_writer,
             "resources.arsc",
-            resources_compression,
+            CompressionMethod::Stored,
             &merged_arsc,
         )
         .map_err(|e| format!("Merge: failed to write merged split resources.arsc: {e}"))?;
@@ -327,7 +352,21 @@ fn parse_dex_index(name: &str) -> Option<usize> {
         return Some(1);
     }
 
-    suffix.parse::<usize>().ok()
+    suffix
+        .parse::<usize>()
+        .ok()
+        .filter(|i| *i >= 2 && i.to_string() == suffix)
+}
+
+fn validate_dex_filename(name: &str) -> Result<(), String> {
+    if !name.contains('/')
+        && name.starts_with("classes")
+        && name.ends_with(".dex")
+        && parse_dex_index(name).is_none()
+    {
+        return Err(format!("Merge: noncanonical DEX filename '{name}'"));
+    }
+    Ok(())
 }
 
 fn next_available_dex_index(existing_entries: &HashSet<String>) -> usize {
@@ -356,11 +395,40 @@ fn push_info(output: &mut Vec<ToolOutput>, line: impl Into<String>) {
     });
 }
 
-fn push_warn(output: &mut Vec<ToolOutput>, line: impl Into<String>) {
-    output.push(ToolOutput {
-        line: line.into(),
-        stream: OutputStream::Stderr,
-    });
+fn validate_native_sets(payloads: &HashMap<String, Vec<u8>>) -> Result<(), String> {
+    let mut abis: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for (name, data) in payloads {
+        if let Some(path) = name.strip_prefix("lib/") {
+            let (abi, lib) = path
+                .split_once('/')
+                .ok_or("Merge: invalid native library path")?;
+            let expected = match abi {
+                "armeabi" | "armeabi-v7a" => (1, 40),
+                "arm64-v8a" => (2, 183),
+                "x86" => (1, 3),
+                "x86_64" => (2, 62),
+                "riscv64" => (2, 243),
+                _ => return Err(format!("Merge: unsupported native ABI '{abi}'")),
+            };
+            if data.len() < 20
+                || &data[..4] != b"\x7fELF"
+                || data[4] != expected.0
+                || data[5] != 1
+                || u16::from_le_bytes([data[18], data[19]]) != expected.1
+            {
+                return Err(format!(
+                    "Merge: native library '{name}' is not a valid ELF for {abi}"
+                ));
+            }
+            abis.entry(abi).or_default().insert(lib);
+        }
+    }
+    if let Some(first) = abis.values().next()
+        && abis.values().any(|libs| libs != first)
+    {
+        return Err("Merge: native library sets differ between ABIs; supply a complete single-ABI split set".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -391,19 +459,112 @@ mod merge_safety_tests {
     use super::*;
 
     #[test]
-    fn rejects_unsupported_feature_module_before_reading_base() {
-        let split = SplitApk {
-            name: "feature_camera.apk".into(),
-            data: vec![],
-            split_type: SplitType::Unknown,
-        };
-        let error = merge_splits(&[], &[split], &mut vec![]).unwrap_err();
-        assert!(error.contains("unsupported split"));
+    fn refuses_incomplete_multi_abi_libraries() {
+        fn elf(class: u8, machine: u8) -> Vec<u8> {
+            let mut b = vec![0; 20];
+            b[..4].copy_from_slice(b"\x7fELF");
+            b[4] = class;
+            b[5] = 1;
+            b[18] = machine;
+            b
+        }
+        let payloads = HashMap::from([
+            ("lib/x86_64/liba.so".to_owned(), elf(2, 62)),
+            ("lib/arm64-v8a/libb.so".to_owned(), elf(2, 183)),
+        ]);
+        assert!(
+            validate_native_sets(&payloads)
+                .unwrap_err()
+                .contains("differ between ABIs")
+        );
     }
 
     #[test]
     fn tracks_unpacked_limit() {
         let mut size = MAX_UNPACKED_BYTES - 3;
         assert!(add_unpacked(&mut size, 4, "huge.bin").is_err());
+    }
+}
+
+#[cfg(test)]
+mod binary_fixture_tests {
+    use super::super::archive::{InputFormat, extract_split_set};
+    use super::*;
+    fn fixture() -> super::super::archive::SplitSet {
+        extract_split_set(
+            std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/feature.apks"
+            )),
+            InputFormat::Apks,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn rejects_duplicate_classes_from_real_feature_dex() {
+        let mut set = fixture();
+        let feature = set
+            .splits
+            .iter()
+            .find(|s| s.split_type == SplitType::Feature)
+            .unwrap()
+            .clone();
+        set.splits.push(feature);
+        assert!(
+            merge_splits(&set.base_apk, &set.splits, &mut vec![])
+                .unwrap_err()
+                .contains("duplicate DEX class")
+        );
+    }
+    #[test]
+    fn rejects_conflicting_assets_instead_of_skipping_them() {
+        let mut set = fixture();
+        let feature = set
+            .splits
+            .iter_mut()
+            .find(|s| s.split_type == SplitType::Feature)
+            .unwrap();
+        let mut writer = ZipWriter::new_append(Cursor::new(feature.data.clone())).unwrap();
+        write_entry(
+            &mut writer,
+            "assets/base.txt",
+            CompressionMethod::Stored,
+            b"different feature payload",
+        )
+        .unwrap();
+        feature.data = writer.finish().unwrap().into_inner();
+        assert!(
+            merge_splits(&set.base_apk, &set.splits, &mut vec![])
+                .unwrap_err()
+                .contains("conflicting ZIP payload assets/base.txt")
+        );
+    }
+    #[test]
+    fn rejects_missing_density_payloads() {
+        let mut set = fixture();
+        let density = set
+            .splits
+            .iter_mut()
+            .find(|s| s.split_type == SplitType::Density)
+            .unwrap();
+        let mut zip = ZipArchive::new(Cursor::new(&density.data)).unwrap();
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        for i in 0..zip.len() {
+            let mut e = zip.by_index(i).unwrap();
+            if e.name().starts_with("res/") {
+                continue;
+            }
+            let name = e.name().to_owned();
+            let compression = e.compression();
+            let mut data = Vec::new();
+            e.read_to_end(&mut data).unwrap();
+            write_entry(&mut writer, &name, compression, &data).unwrap();
+        }
+        density.data = writer.finish().unwrap().into_inner();
+        assert!(
+            merge_splits(&set.base_apk, &set.splits, &mut vec![])
+                .unwrap_err()
+                .contains("resource payload")
+        );
     }
 }

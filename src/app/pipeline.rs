@@ -271,11 +271,13 @@ mod pipeline_tests {
 
     #[test]
     fn zipalign_failure_never_starts_signing_or_installation() {
-        let mut app = ApkanaApp::default();
-        app.busy = true;
-        app.pending_sign_after_build = true;
-        app.pending_install_after_build = true;
-        app.pending_install_apk_path = Some("stale-aligned.apk".into());
+        let mut app = ApkanaApp {
+            busy: true,
+            pending_sign_after_build: true,
+            pending_install_after_build: true,
+            pending_install_apk_path: Some("stale-aligned.apk".into()),
+            ..Default::default()
+        };
         let next = app.handle_zipalign_completed(Ok(ToolResult {
             exit_code: 1,
             duration: Duration::from_secs(1),

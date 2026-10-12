@@ -20,6 +20,8 @@ Architecture:
 Background tasks must never mutate egui app state off-thread. Use `Task::perform` and
 the channel to deliver completion messages to the UI thread.
 
-Preserve merger behavior: filter only signature-related META-INF entries, retain base
-resources.arsc on ARSC conversion failure, and report OBB files without merging them.
+Merger guardrails: filter only signature-related META-INF entries. Fail on ARSC
+conversion failure or conflicts; never silently drop resources. Report and reject
+required OBB data without merging it. Publish output only after alignment, signing
+and verification.
 Do not update the pinned resand revision without merger-focused verification.

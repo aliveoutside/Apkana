@@ -1,6 +1,8 @@
 mod apk_merge;
 mod archive;
+mod dex;
 mod manifest;
+mod metadata;
 mod resources;
 
 use std::fs::{self, OpenOptions};
@@ -8,7 +10,10 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
-use crate::tools::{OutputStream, ToolOutput, ToolResult};
+use crate::config::ToolPaths;
+use crate::tools::signer::SignOptions;
+use crate::tools::{OutputStream, ToolOutput, ToolResult, run_command_collect, signer, zipalign};
+use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct MergeOptions {
@@ -16,7 +21,11 @@ pub struct MergeOptions {
     pub output_path: String,
 }
 
-pub fn merge(options: MergeOptions) -> Result<ToolResult, String> {
+pub fn merge(
+    paths: &ToolPaths,
+    options: MergeOptions,
+    mut signing: SignOptions,
+) -> Result<ToolResult, String> {
     if options.input_path.trim().is_empty() {
         return Err(String::from("Merge: input archive path is required"));
     }
@@ -46,34 +55,87 @@ pub fn merge(options: MergeOptions) -> Result<ToolResult, String> {
         push_warn(&mut output, warning);
     }
 
-    let did_merge = !split_set.splits.is_empty();
-    let merged_apk = if !did_merge {
-        push_info(
-            &mut output,
-            String::from("No split APK modules found; copying base APK as output"),
-        );
-        split_set.base_apk
-    } else {
-        push_info(
-            &mut output,
-            format!("Merging {} split APK modules", split_set.splits.len()),
-        );
-        apk_merge::merge_splits(&split_set.base_apk, &split_set.splits, &mut output)?
-    };
-
-    // Write in the target directory and then rename; a failed write cannot
-    // truncate an existing output. On systems where an existing target cannot
-    // be atomically replaced, fail without removing the previous APK.
-    write_atomically(output_path, &merged_apk)?;
-    if did_merge {
-        push_warn(
-            &mut output,
-            "Merged APK is unsigned. Sign it with the Sign tab before installing.",
-        );
+    if signing.keystore_path.trim().is_empty()
+        || signing.alias.trim().is_empty()
+        || !Path::new(&signing.keystore_path).is_file()
+    {
+        return Err("Merge: signing requires a keystore and alias; configure the Sign tab or create ~/.android/debug.keystore".into());
     }
+    let stage =
+        tempfile::tempdir().map_err(|e| format!("Merge: cannot create staging directory: {e}"))?;
+    // A signed, compatible input set is required. Never fuse APKs from different publishers.
+    let mut certificate = None;
+    for (i, data) in std::iter::once(&split_set.base_apk)
+        .chain(split_set.splits.iter().map(|s| &s.data))
+        .enumerate()
+    {
+        let path = stage.path().join(format!("input-{i}.apk"));
+        fs::write(&path, data).map_err(|e| format!("Merge: cannot stage input: {e}"))?;
+        let mut command = Command::new(&paths.apksigner);
+        command.args(["verify", "--print-certs"]).arg(&path);
+        let result = checked_command(command, "input signature verification", &mut output)?;
+        let certs: Vec<_> = result
+            .output
+            .iter()
+            .filter(|o| o.line.contains("certificate SHA-256 digest:"))
+            .map(|o| o.line.clone())
+            .collect();
+        if certs.is_empty() {
+            return Err("Merge: apksigner did not report an input signing certificate".into());
+        }
+        if certificate.as_ref().is_some_and(|c| c != &certs) {
+            return Err("Merge: split APK signing certificates differ".into());
+        }
+        certificate = Some(certs);
+    }
+    let merged_apk = apk_merge::merge_splits(&split_set.base_apk, &split_set.splits, &mut output)?;
+    let unsigned = stage.path().join("unsigned.apk");
+    let aligned = stage.path().join("aligned.apk");
+    fs::write(&unsigned, &merged_apk)
+        .map_err(|e| format!("Merge: cannot stage merged APK: {e}"))?;
+    checked_result(
+        zipalign::run(
+            paths,
+            &zipalign::ZipalignOptions {
+                input_apk: unsigned.to_string_lossy().into_owned(),
+                output_apk: aligned.to_string_lossy().into_owned(),
+            },
+        )?,
+        "zipalign",
+        &mut output,
+    )?;
+    signing.apk_path = aligned.to_string_lossy().into_owned();
+    checked_result(signer::sign(paths, &signing)?, "signing", &mut output)?;
+    let mut verify = Command::new(&paths.apksigner);
+    verify.args(["verify", "--verbose"]).arg(&aligned);
+    checked_command(verify, "output signature verification", &mut output)?;
+    let mut alignment = Command::new(&paths.zipalign);
+    alignment.args(["-c", "4"]).arg(&aligned);
+    checked_command(alignment, "output alignment verification", &mut output)?;
+    for what in ["badging", "resources"] {
+        let mut command = Command::new(&paths.aapt2);
+        command.args(["dump", what]).arg(&aligned);
+        let result =
+            run_command_collect(command).map_err(|e| format!("Merge: aapt2 {what}: {e}"))?;
+        // Resource dumps can be enormous; keep successful validation logs concise.
+        if result.exit_code != 0 {
+            checked_result(result, &format!("aapt2 {what}"), &mut output)?;
+        }
+        push_info(&mut output, format!("aapt2 {what}: passed"));
+    }
+    let signed =
+        fs::read(&aligned).map_err(|e| format!("Merge: cannot read signed output: {e}"))?;
+    let metadata = metadata::inspect(&signed)?;
+    if metadata.split.is_some() || metadata.split_required || !metadata.required_types.is_empty() {
+        return Err("Merge: output still declares a split identity".into());
+    }
+    write_atomically(output_path, &signed)?;
     push_info(
         &mut output,
-        format!("Wrote merged APK: {}", output_path.to_string_lossy()),
+        format!(
+            "Wrote signed and verified APK: {}",
+            output_path.to_string_lossy()
+        ),
     );
 
     Ok(ToolResult {
@@ -81,6 +143,38 @@ pub fn merge(options: MergeOptions) -> Result<ToolResult, String> {
         duration: started.elapsed(),
         output,
     })
+}
+
+fn checked_result(
+    result: ToolResult,
+    step: &str,
+    output: &mut Vec<ToolOutput>,
+) -> Result<ToolResult, String> {
+    if result.exit_code != 0 {
+        let detail = result
+            .output
+            .iter()
+            .map(|o| o.line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "Merge: {step} failed (exit {}): {detail}",
+            result.exit_code
+        ));
+    }
+    output.extend(result.output.clone());
+    Ok(result)
+}
+fn checked_command(
+    command: Command,
+    step: &str,
+    output: &mut Vec<ToolOutput>,
+) -> Result<ToolResult, String> {
+    checked_result(
+        run_command_collect(command).map_err(|e| format!("Merge: {step}: {e}"))?,
+        step,
+        output,
+    )
 }
 
 fn push_info(output: &mut Vec<ToolOutput>, line: impl Into<String>) {

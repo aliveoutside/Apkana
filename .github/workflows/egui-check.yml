@@ -30,3 +30,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo check --locked
       - run: cargo test --locked
+
+  merge-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: android-actions/setup-android@v3
+      - name: Install desktop and Android tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev
+          sdkmanager "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+      - run: cargo test --locked --test merge_archives -- --ignored

@@ -77,12 +77,15 @@ checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 name = "apkana"
 version = "0.1.0"
 dependencies = [
+ "adler2",
  "dirs",
  "eframe",
  "resand",
  "rfd",
  "serde",
  "serde_json",
+ "sha1",
+ "tempfile",
  "toml",
  "zip",
 ]

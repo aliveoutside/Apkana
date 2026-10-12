@@ -7,6 +7,7 @@ pub enum SettingsMessage {
     ApktoolJarChanged(String),
     ApksignerChanged(String),
     ZipalignChanged(String),
+    Aapt2Changed(String),
     AdbChanged(String),
     BrowseApktoolJar,
     Save,
@@ -38,6 +39,10 @@ pub fn show(ui: &mut egui::Ui, paths: &ToolPaths) -> Vec<SettingsMessage> {
     ui.add_space(6.0);
     if let Some(v) = common::field(ui, "zipalign executable", "zipalign", &paths.zipalign) {
         events.push(SettingsMessage::ZipalignChanged(v));
+    }
+    ui.add_space(6.0);
+    if let Some(v) = common::field(ui, "aapt2 executable", "aapt2", &paths.aapt2) {
+        events.push(SettingsMessage::Aapt2Changed(v));
     }
     ui.add_space(6.0);
     if let Some(v) = common::field(ui, "adb executable", "adb", &paths.adb) {
