@@ -1,0 +1,66 @@
+name: Upgrade resand dependency
+
+on:
+  push:
+    branches: [feat/egui-ui-migration]
+    paths:
+      - .github/workflows/resand-upgrade.yml
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Get latest upstream resand commit
+        id: upstream
+        run: |
+          set -euo pipefail
+          UPSTREAM=https://codeberg.org/fieryhenry/resand.git
+          SHA="$(git ls-remote "$UPSTREAM" refs/heads/main | awk '{print $1}')"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve resand main HEAD"; exit 1
+          fi
+          echo "Latest fieryhenry/resand main: $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          git clone -q --filter=blob:none --depth=1 --branch main "$UPSTREAM" /tmp/resand-upstream
+          sed -n '1,90p' /tmp/resand-upstream/Cargo.toml
+      - name: Update manifest to pinned newer resand
+        env:
+          RESAND_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          f = Path("Cargo.toml")
+          s = f.read_text()
+          s = s.replace('resand = "0.2"', 'resand = { git = "https://codeberg.org/fieryhenry/resand.git", rev = "' + os.environ["RESAND_SHA"] + '" }')
+          s = s.replace('[patch.crates-io]\nresand = { git = "https://codeberg.org/goldsmith1433/resand.git", rev = "ac62f1ddb3817f3da358f0f398774e8173f86c8d" }\n\n', '')
+          if "goldsmith1433" in s or 'resand = "0.2"' in s: raise SystemExit("Old resand still referenced")
+          f.write_text(s)
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Resolve resand and refresh lockfile
+        run: |
+          cargo update -p resand
+          cargo fmt --all -- --check
+      - name: Verify compatibility
+        run: |
+          cargo check --locked
+          cargo test --locked
+      - name: Commit and push verified update
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Cargo.toml Cargo.lock
+          git commit -m "build: upgrade resand to fieryhenry main (pinned commit)"
+          git push origin HEAD:feat/egui-ui-migration
