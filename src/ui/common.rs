@@ -72,11 +72,11 @@ pub fn action(ui: &mut egui::Ui, label: &str, busy: bool) -> bool {
     ui.add_space(12.0);
     ui.add_enabled(
         !busy,
-        egui::Button::new(
-            egui::RichText::new(label)
-                .strong()
-                .color(if dark { egui::Color32::BLACK } else { egui::Color32::WHITE }),
-        )
+        egui::Button::new(egui::RichText::new(label).strong().color(if dark {
+            egui::Color32::BLACK
+        } else {
+            egui::Color32::WHITE
+        }))
         .fill(accent)
         .corner_radius(egui::CornerRadius::same(8))
         .min_size(egui::vec2(135.0, 36.0)),

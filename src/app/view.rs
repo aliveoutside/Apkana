@@ -12,31 +12,36 @@ impl ApkanaApp {
         egui::TopBottomPanel::top("navigation")
             .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(18, 11)))
             .show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                let accent = if ui.visuals().dark_mode {
-                    egui::Color32::from_rgb(155, 215, 144)
-                } else {
-                    egui::Color32::from_rgb(47, 119, 69)
-                };
-                ui.label(egui::RichText::new("Apkana").size(21.0).strong().color(accent));
-                ui.separator();
-                for tab in MainTab::ALL {
+                ui.horizontal_wrapped(|ui| {
+                    let accent = if ui.visuals().dark_mode {
+                        egui::Color32::from_rgb(155, 215, 144)
+                    } else {
+                        egui::Color32::from_rgb(47, 119, 69)
+                    };
+                    ui.label(
+                        egui::RichText::new("Apkana")
+                            .size(21.0)
+                            .strong()
+                            .color(accent),
+                    );
+                    ui.separator();
+                    for tab in MainTab::ALL {
+                        if ui
+                            .selectable_label(self.active_tab == tab, tab.title())
+                            .clicked()
+                        {
+                            messages.push(Message::TabSelected(tab));
+                        }
+                    }
+                    ui.separator();
                     if ui
-                        .selectable_label(self.active_tab == tab, tab.title())
+                        .add_enabled(!self.busy, egui::Button::new("Settings"))
                         .clicked()
                     {
-                        messages.push(Message::TabSelected(tab));
+                        messages.push(Message::SettingsPressed);
                     }
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(!self.busy, egui::Button::new("Settings"))
-                    .clicked()
-                {
-                    messages.push(Message::SettingsPressed);
-                }
+                });
             });
-        });
 
         let mut copy_logs = false;
         let mut clear_logs = false;
@@ -91,49 +96,49 @@ impl ApkanaApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(16)))
             .show(ctx, |ui| {
-            ui.add_enabled_ui(!self.busy, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.add_space(8.0);
-                    match self.active_tab {
-                        MainTab::DecodeBuild => {
-                            ui.columns(2, |cols| {
+                ui.add_enabled_ui(!self.busy, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.add_space(8.0);
+                        match self.active_tab {
+                            MainTab::DecodeBuild => {
+                                ui.columns(2, |cols| {
+                                    messages.extend(
+                                        decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                            .into_iter()
+                                            .map(Message::Decode),
+                                    );
+                                    messages.extend(
+                                        build_tab::show(&mut cols[1], &self.build, self.busy)
+                                            .into_iter()
+                                            .map(Message::Build),
+                                    );
+                                });
+                            }
+                            MainTab::Sign => {
                                 messages.extend(
-                                    decode_tab::show(&mut cols[0], &self.decode, self.busy)
+                                    sign_tab::show(ui, &self.sign, self.busy)
                                         .into_iter()
-                                        .map(Message::Decode),
+                                        .map(Message::Sign),
                                 );
+                            }
+                            MainTab::Merge => {
                                 messages.extend(
-                                    build_tab::show(&mut cols[1], &self.build, self.busy)
+                                    merge_tab::show(ui, &self.merge, self.busy)
                                         .into_iter()
-                                        .map(Message::Build),
+                                        .map(Message::Merge),
                                 );
-                            });
+                            }
+                            MainTab::Install => {
+                                messages.extend(
+                                    install_tab::show(ui, &self.install, self.busy)
+                                        .into_iter()
+                                        .map(Message::Install),
+                                );
+                            }
                         }
-                        MainTab::Sign => {
-                            messages.extend(
-                                sign_tab::show(ui, &self.sign, self.busy)
-                                    .into_iter()
-                                    .map(Message::Sign),
-                            );
-                        }
-                        MainTab::Merge => {
-                            messages.extend(
-                                merge_tab::show(ui, &self.merge, self.busy)
-                                    .into_iter()
-                                    .map(Message::Merge),
-                            );
-                        }
-                        MainTab::Install => {
-                            messages.extend(
-                                install_tab::show(ui, &self.install, self.busy)
-                                    .into_iter()
-                                    .map(Message::Install),
-                            );
-                        }
-                    }
+                    });
                 });
             });
-        });
 
         if copy_logs {
             ctx.copy_text(self.logs_for_clipboard());
