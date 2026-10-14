@@ -20,10 +20,6 @@ pub fn show(ui: &mut egui::Ui, state: &InstallTabState, busy: bool) -> Vec<Insta
         if browse {
             events.push(InstallMessage::BrowseApk);
         }
-        common::hint(
-            ui,
-            "Requires a connected Android device with USB debugging enabled.",
-        );
         if common::action(ui, "Install APK", busy) {
             events.push(InstallMessage::Start);
         }

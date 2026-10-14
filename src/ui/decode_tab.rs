@@ -43,7 +43,8 @@ pub fn show(ui: &mut egui::Ui, state: &DecodeTabState, busy: bool) -> Vec<Decode
         if browse {
             events.push(DecodeMessage::BrowseOutputDir);
         }
-        common::section(ui, "DECODE OPTIONS");
+        ui.separator();
+        ui.label(egui::RichText::new("Options").strong());
         if let Some(v) = common::toggle(ui, "Force overwrite existing output (-f)", state.force) {
             events.push(DecodeMessage::ForceToggled(v));
         }

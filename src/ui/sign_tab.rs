@@ -45,7 +45,7 @@ pub fn show(ui: &mut egui::Ui, state: &SignTabState, busy: bool) -> Vec<SignMess
         if browse {
             events.push(SignMessage::BrowseKeystore);
         }
-        common::section(ui, "KEY DETAILS");
+        ui.add_space(8.0);
         if let Some(v) = common::field(ui, "Key alias", "Key alias (optional)", &state.alias) {
             events.push(SignMessage::AliasChanged(v));
         }
@@ -62,10 +62,6 @@ pub fn show(ui: &mut egui::Ui, state: &SignTabState, busy: bool) -> Vec<SignMess
         if let Some(v) = common::secret(ui, "Key password", "Key password", &state.key_pass) {
             events.push(SignMessage::KeyPassChanged(v));
         }
-        common::hint(
-            ui,
-            "Leave key details empty to use your default Android debug key.",
-        );
         if common::action(ui, "Sign APK", busy) {
             events.push(SignMessage::Start);
         }
