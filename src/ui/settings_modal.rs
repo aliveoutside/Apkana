@@ -65,7 +65,10 @@ pub fn show(ui: &mut egui::Ui, paths: &ToolPaths) -> Vec<SettingsMessage> {
     ui.separator();
     ui.add_space(10.0);
     ui.horizontal(|ui| {
-        if ui.add_sized([100.0, 35.0], egui::Button::new("Cancel")).clicked() {
+        if ui
+            .add_sized([100.0, 35.0], egui::Button::new("Cancel"))
+            .clicked()
+        {
             events.push(SettingsMessage::Cancel);
         }
         if ui

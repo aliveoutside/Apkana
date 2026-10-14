@@ -62,7 +62,10 @@ pub fn show(ui: &mut egui::Ui, state: &SignTabState, busy: bool) -> Vec<SignMess
         if let Some(v) = common::secret(ui, "Key password", "Key password", &state.key_pass) {
             events.push(SignMessage::KeyPassChanged(v));
         }
-        common::hint(ui, "Leave key details empty to use your default Android debug key.");
+        common::hint(
+            ui,
+            "Leave key details empty to use your default Android debug key.",
+        );
         if common::action(ui, "Sign APK", busy) {
             events.push(SignMessage::Start);
         }

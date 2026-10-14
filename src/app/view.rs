@@ -74,21 +74,15 @@ impl ApkanaApp {
                     } else {
                         egui::Color32::TRANSPARENT
                     };
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::CornerRadius::same(9),
-                        background,
-                    );
+                    ui.painter()
+                        .rect_filled(rect, egui::CornerRadius::same(9), background);
                     if selected {
                         let indicator = egui::Rect::from_min_size(
                             rect.left_center() + egui::vec2(0.0, -11.0),
                             egui::vec2(3.0, 22.0),
                         );
-                        ui.painter().rect_filled(
-                            indicator,
-                            egui::CornerRadius::same(2),
-                            p.accent,
-                        );
+                        ui.painter()
+                            .rect_filled(indicator, egui::CornerRadius::same(2), p.accent);
                     }
                     ui.painter().text(
                         rect.left_center() + egui::vec2(16.0, 0.0),
@@ -119,9 +113,7 @@ impl ApkanaApp {
                     );
                     ui.add_space(11.0);
                     let button = egui::Button::new(
-                        egui::RichText::new("Preferences")
-                            .size(13.0)
-                            .color(p.text),
+                        egui::RichText::new("Preferences").size(13.0).color(p.text),
                     )
                     .fill(p.surface)
                     .stroke(egui::Stroke::new(1.0, p.border))
@@ -182,13 +174,10 @@ impl ApkanaApp {
                                 .color(p.muted),
                         );
                     }
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            clear_logs = ui.small_button("Clear").clicked();
-                            copy_logs = ui.small_button("Copy logs").clicked();
-                        },
-                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        clear_logs = ui.small_button("Clear").clicked();
+                        copy_logs = ui.small_button("Copy logs").clicked();
+                    });
                 });
 
                 if self.busy {
@@ -210,16 +199,20 @@ impl ApkanaApp {
                         if self.logs.is_empty() {
                             ui.add_space(14.0);
                             ui.label(
-                                egui::RichText::new("Command output and status updates appear here.")
-                                    .size(12.5)
-                                    .color(p.muted),
+                                egui::RichText::new(
+                                    "Command output and status updates appear here.",
+                                )
+                                .size(12.5)
+                                .color(p.muted),
                             );
                         }
                         for entry in &self.logs {
                             let (tag, color) = match entry.level {
                                 LogLevel::Info => ("INFO", p.muted),
                                 LogLevel::Warn => ("WARN", egui::Color32::from_rgb(224, 177, 100)),
-                                LogLevel::Error => ("ERROR", egui::Color32::from_rgb(234, 113, 107)),
+                                LogLevel::Error => {
+                                    ("ERROR", egui::Color32::from_rgb(234, 113, 107))
+                                }
                             };
                             ui.horizontal(|ui| {
                                 ui.label(
@@ -252,10 +245,7 @@ impl ApkanaApp {
                         "Decode & Build",
                         "Disassemble, edit, and rebuild Android packages.",
                     ),
-                    MainTab::Sign => (
-                        "Sign APK",
-                        "Prepare a package with a signing certificate.",
-                    ),
+                    MainTab::Sign => ("Sign APK", "Prepare a package with a signing certificate."),
                     MainTab::Merge => (
                         "Merge packages",
                         "Turn compatible split archives into a single APK.",
@@ -267,30 +257,18 @@ impl ApkanaApp {
                 };
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(title)
-                                .size(28.0)
-                                .strong()
-                                .color(p.text),
-                        );
+                        ui.label(egui::RichText::new(title).size(28.0).strong().color(p.text));
                         ui.add_space(2.0);
+                        ui.label(egui::RichText::new(description).size(13.0).color(p.muted));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            egui::RichText::new(description)
-                                .size(13.0)
+                            egui::RichText::new("APK WORKSPACE")
+                                .size(10.0)
+                                .strong()
                                 .color(p.muted),
                         );
                     });
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.label(
-                                egui::RichText::new("APK WORKSPACE")
-                                    .size(10.0)
-                                    .strong()
-                                    .color(p.muted),
-                            );
-                        },
-                    );
                 });
                 ui.add_space(25.0);
 

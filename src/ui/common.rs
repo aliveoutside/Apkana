@@ -55,8 +55,14 @@ pub fn card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui))
         "Decode APK" => ("01 / DECODE", "Unpack an APK into an editable project."),
         "Build APK" => ("02 / BUILD", "Compile your project and prepare a release."),
         "Sign APK" => ("03 / SIGN", "Apply a signing key to an Android package."),
-        "Merge Split APKs" => ("04 / MERGE", "Combine compatible split packages into one APK."),
-        "Install APK" => ("05 / INSTALL", "Deploy an APK to a connected Android device."),
+        "Merge Split APKs" => (
+            "04 / MERGE",
+            "Combine compatible split packages into one APK.",
+        ),
+        "Install APK" => (
+            "05 / INSTALL",
+            "Deploy an APK to a connected Android device.",
+        ),
         _ => ("APKANA / TOOL", ""),
     };
 
@@ -74,12 +80,7 @@ pub fn card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui))
                     .color(p.accent),
             );
             ui.add_space(5.0);
-            ui.label(
-                egui::RichText::new(title)
-                    .size(20.0)
-                    .strong()
-                    .color(p.text),
-            );
+            ui.label(egui::RichText::new(title).size(20.0).strong().color(p.text));
             ui.add_space(3.0);
             ui.label(egui::RichText::new(description).size(12.5).color(p.muted));
             ui.add_space(20.0);
