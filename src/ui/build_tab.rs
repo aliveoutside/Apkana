@@ -62,8 +62,7 @@ pub fn show(ui: &mut egui::Ui, state: &BuildTabState, busy: bool) -> Vec<BuildMe
         if browse {
             events.push(BuildMessage::BrowseOutputApk);
         }
-        ui.separator();
-        ui.label(egui::RichText::new("Build options").strong());
+        common::section(ui, "BUILD OPTIONS");
         if let Some(v) = common::toggle(ui, "Force rebuild (-f)", state.force_all) {
             events.push(BuildMessage::ForceAllToggled(v));
         }
@@ -74,8 +73,7 @@ pub fn show(ui: &mut egui::Ui, state: &BuildTabState, busy: bool) -> Vec<BuildMe
         ) {
             events.push(BuildMessage::StripDebugDirectivesToggled(v));
         }
-        ui.separator();
-        ui.label(egui::RichText::new("Pipeline").strong());
+        common::section(ui, "POST-BUILD PIPELINE");
         ui.add_enabled_ui(state.can_toggle_zipalign(), |ui| {
             if let Some(v) = common::toggle(ui, "Run zipalign", state.run_zipalign) {
                 events.push(BuildMessage::RunZipalignToggled(v));
