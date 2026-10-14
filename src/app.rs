@@ -219,8 +219,9 @@ impl eframe::App for ApkanaApp {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
         self.render_frame(ctx);
-        if self.busy {
-            ctx.request_repaint_after(Duration::from_millis(80));
-        }
+        // Keep a low-frequency idle repaint scheduled. On some Windows/OpenGL
+        // drivers the restored viewport can otherwise show an empty background
+        // until the next user input wakes the event loop.
+        ctx.request_repaint_after(Duration::from_millis(if self.busy { 80 } else { 200 }));
     }
 }

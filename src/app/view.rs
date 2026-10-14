@@ -159,6 +159,10 @@ impl ApkanaApp {
             egui::Window::new("Settings")
                 .collapsible(false)
                 .resizable(false)
+                // TextEdit::desired_width(INFINITY) otherwise feeds the modal's
+                // auto-size back into its width on pointer/hover repaints.
+                .min_width(510.0)
+                .max_width(510.0)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .show(ctx, |ui| {
                     ui.add_enabled_ui(!self.busy, |ui| {

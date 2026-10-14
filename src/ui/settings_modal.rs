@@ -15,7 +15,9 @@ pub enum SettingsMessage {
 }
 pub fn show(ui: &mut egui::Ui, paths: &ToolPaths) -> Vec<SettingsMessage> {
     let mut events = Vec::new();
-    ui.set_min_width(460.0);
+    // Fix the content width, not just its minimum: tool path fields should
+    // never make the settings window grow when hovered or repainted.
+    ui.set_width(470.0);
     if let Some(v) = common::field(ui, "Java executable", "java", &paths.java) {
         events.push(SettingsMessage::JavaChanged(v));
     }
