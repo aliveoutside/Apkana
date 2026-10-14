@@ -1,4 +1,5 @@
-use iced::Task;
+use super::Task;
+use std::path::Path;
 
 use crate::tools::ToolResult;
 use crate::tools::adb::{self, InstallOptions};
@@ -27,7 +28,12 @@ impl ApkanaApp {
                 self.status_message = String::from("Running zipalign...");
 
                 let input_apk = self.build_output_apk_path();
-                let output_apk = input_apk.replace(".apk", "-aligned.apk");
+                let input = Path::new(&input_apk);
+                let stem = input.file_stem().unwrap_or_default().to_string_lossy();
+                let output_apk = input
+                    .with_file_name(format!("{stem}-aligned.apk"))
+                    .to_string_lossy()
+                    .into_owned();
 
                 self.busy = true;
                 self.progress_value = 55.0;
@@ -46,7 +52,7 @@ impl ApkanaApp {
 
                 let paths = self.config.tools.clone();
                 Task::perform(
-                    async move {
+                    move || {
                         zipalign::run(
                             &paths,
                             &ZipalignOptions {
@@ -89,15 +95,13 @@ impl ApkanaApp {
         result: Result<ToolResult, String>,
     ) -> Task<Message> {
         self.busy = false;
-        let mut run_sign = false;
-        if let Ok(ref output) = result {
-            run_sign = output.exit_code == 0 && self.pending_sign_after_build;
-        }
+        self.progress_value = 0.0;
+        let succeeded = matches!(&result, Ok(output) if output.exit_code == 0);
+        let run_sign = succeeded && self.pending_sign_after_build;
+        let run_install = succeeded && self.pending_install_after_build;
         self.pending_sign_after_build = false;
-        self.push_result("Zipalign", result);
-
-        let run_install = self.pending_install_after_build;
         self.pending_install_after_build = false;
+        self.push_result("Zipalign", result);
 
         if run_sign {
             let apk_path = self
@@ -172,9 +176,13 @@ impl ApkanaApp {
         Task::none()
     }
 
-    fn build_output_apk_path(&self) -> String {
+    pub(super) fn build_output_apk_path(&self) -> String {
         if self.build.output_apk.is_empty() {
-            format!("{}/dist/{}.apk", self.build.project_dir, "out")
+            Path::new(&self.build.project_dir)
+                .join("dist")
+                .join("out.apk")
+                .to_string_lossy()
+                .into_owned()
         } else {
             self.build.output_apk.clone()
         }
@@ -230,7 +238,7 @@ impl ApkanaApp {
 
         let paths = self.config.tools.clone();
         Task::perform(
-            async move { signer::sign(&paths, &options) },
+            move || signer::sign(&paths, &options),
             Message::SignCompleted,
         )
     }
@@ -249,8 +257,51 @@ impl ApkanaApp {
         };
         let paths = self.config.tools.clone();
         Task::perform(
-            async move { adb::install(&paths, &options) },
+            move || adb::install(&paths, &options),
             Message::InstallCompleted,
         )
+    }
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::*;
+    use crate::tools::ToolResult;
+    use std::time::Duration;
+
+    #[test]
+    fn zipalign_failure_never_starts_signing_or_installation() {
+        let mut app = ApkanaApp {
+            busy: true,
+            pending_sign_after_build: true,
+            pending_install_after_build: true,
+            pending_install_apk_path: Some("stale-aligned.apk".into()),
+            ..Default::default()
+        };
+        let next = app.handle_zipalign_completed(Ok(ToolResult {
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+            output: vec![],
+        }));
+        assert!(next.start.is_none());
+        assert!(!app.busy);
+        assert_eq!(app.progress_value, 0.0);
+        assert!(!app.pending_install_after_build);
+        assert!(!app.pending_sign_after_build);
+        assert!(app.pending_install_apk_path.is_none());
+    }
+
+    #[test]
+    fn default_build_output_is_deterministic() {
+        let mut app = ApkanaApp::default();
+        app.build.project_dir = "projects/example".into();
+        app.build.output_apk.clear();
+        assert_eq!(
+            app.build_output_apk_path(),
+            Path::new("projects/example")
+                .join("dist")
+                .join("out.apk")
+                .to_string_lossy()
+        );
     }
 }

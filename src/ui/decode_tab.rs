@@ -1,8 +1,5 @@
-use iced::widget::{button, checkbox, column, row, text, text_input};
-use iced::{Element, Length};
-
-use crate::ui::common::{browse_button, field_label, form_shell, primary_action, section};
-use crate::ui::styles;
+use super::common;
+use eframe::egui;
 
 #[derive(Debug, Clone, Default)]
 pub struct DecodeTabState {
@@ -25,62 +22,41 @@ pub enum DecodeMessage {
     Start,
 }
 
-pub fn view(state: &DecodeTabState, busy: bool) -> Element<'_, DecodeMessage> {
-    let content = column![
-        text("Decode APK").size(styles::PAGE_TITLE_SIZE),
-        section(
-            "Source",
-            column![
-                field_label("APK file"),
-                row![
-                    text_input("/path/to/app.apk", &state.apk_path)
-                        .size(styles::BODY_SIZE)
-                        .on_input(DecodeMessage::ApkPathChanged)
-                        .width(Length::Fill),
-                    browse_button(DecodeMessage::BrowseApk),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-                field_label("Output directory"),
-                row![
-                    text_input("/path/to/output", &state.output_dir)
-                        .size(styles::BODY_SIZE)
-                        .on_input(DecodeMessage::OutputDirChanged)
-                        .width(Length::Fill),
-                    browse_button(DecodeMessage::BrowseOutputDir),
-                ]
-                .spacing(styles::SPACE_6)
-                .align_y(iced::Alignment::Center),
-            ],
-        ),
-        section(
-            "Options",
-            column![
-                checkbox(state.force)
-                    .label("Force overwrite existing output (-f)")
-                    .size(16)
-                    .text_size(styles::BODY_SIZE)
-                    .on_toggle(DecodeMessage::ForceToggled),
-                checkbox(state.no_src)
-                    .label("Skip sources (-s)")
-                    .size(16)
-                    .text_size(styles::BODY_SIZE)
-                    .on_toggle(DecodeMessage::NoSrcToggled),
-                checkbox(state.no_res)
-                    .label("Skip resources (-r)")
-                    .size(16)
-                    .text_size(styles::BODY_SIZE)
-                    .on_toggle(DecodeMessage::NoResToggled),
-            ]
-            .spacing(styles::SPACE_8),
-        ),
-        button(text("Decode APK").size(styles::BODY_SIZE))
-            .style(primary_action)
-            .width(Length::Fill)
-            .padding([styles::SPACE_6, styles::SPACE_12])
-            .on_press_maybe((!busy).then_some(DecodeMessage::Start)),
-    ]
-    .spacing(styles::SECTION_GAP);
-
-    form_shell(content).into()
+pub fn show(ui: &mut egui::Ui, state: &DecodeTabState, busy: bool) -> Vec<DecodeMessage> {
+    let mut events = Vec::new();
+    common::card(ui, "Decode APK", |ui| {
+        let (changed, browse) = common::path(ui, "APK file", "/path/to/app.apk", &state.apk_path);
+        {
+            if let Some(v) = changed {
+                events.push(DecodeMessage::ApkPathChanged(v));
+            }
+            if browse {
+                events.push(DecodeMessage::BrowseApk);
+            }
+        }
+        ui.add_space(8.0);
+        let (changed, browse) =
+            common::path(ui, "Output directory", "/path/to/output", &state.output_dir);
+        if let Some(v) = changed {
+            events.push(DecodeMessage::OutputDirChanged(v));
+        }
+        if browse {
+            events.push(DecodeMessage::BrowseOutputDir);
+        }
+        ui.separator();
+        ui.label(egui::RichText::new("Options").strong());
+        if let Some(v) = common::toggle(ui, "Force overwrite existing output (-f)", state.force) {
+            events.push(DecodeMessage::ForceToggled(v));
+        }
+        if let Some(v) = common::toggle(ui, "Skip sources (-s)", state.no_src) {
+            events.push(DecodeMessage::NoSrcToggled(v));
+        }
+        if let Some(v) = common::toggle(ui, "Skip resources (-r)", state.no_res) {
+            events.push(DecodeMessage::NoResToggled(v));
+        }
+        if common::action(ui, "Decode APK", busy) {
+            events.push(DecodeMessage::Start);
+        }
+    });
+    events
 }

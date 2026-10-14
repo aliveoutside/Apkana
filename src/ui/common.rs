@@ -1,95 +1,85 @@
-use iced::widget::{button, column, container, text, Button, Column, Container};
-use iced::{Element, Length, Theme};
+//! Shared egui form controls.
+use eframe::egui;
 
-use crate::ui::styles;
-
-pub fn primary_action(theme: &Theme, status: button::Status) -> button::Style {
-    let mut style = button::primary(theme, status);
-    style.border.radius = styles::CONTROL_RADIUS.into();
-    style
+pub fn card(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
+    let visuals = ui.visuals();
+    egui::Frame::new()
+        .fill(visuals.window_fill)
+        .stroke(egui::Stroke::new(
+            1.0,
+            visuals.widgets.noninteractive.bg_stroke.color,
+        ))
+        .corner_radius(egui::CornerRadius::same(11))
+        .inner_margin(egui::Margin::same(17))
+        .show(ui, |ui| {
+            ui.set_min_width((ui.available_width() - 16.0).max(0.0));
+            ui.heading(title);
+            ui.add_space(12.0);
+            content(ui);
+        });
 }
 
-pub fn secondary_button(theme: &Theme, status: button::Status) -> button::Style {
-    let palette = theme.extended_palette();
-    let mut style = button::secondary(theme, status);
-    style.border.radius = styles::CONTROL_RADIUS.into();
-    style.border.width = 1.0;
-
-    match status {
-        button::Status::Active => {
-            style.background = Some(iced::Background::Color(palette.background.strong.color));
-            style.text_color = palette.background.base.text;
-            style.border.color = palette.background.strong.text.scale_alpha(0.2);
-        }
-        button::Status::Hovered => {
-            style.background = Some(iced::Background::Color(palette.primary.weak.color));
-            style.text_color = palette.primary.base.text;
-            style.border.color = palette.primary.strong.color;
-        }
-        button::Status::Pressed => {
-            style.background = Some(iced::Background::Color(palette.primary.strong.color));
-            style.text_color = palette.primary.base.text;
-            style.border.color = palette.primary.strong.color;
-        }
-        button::Status::Disabled => {
-            style.background = Some(iced::Background::Color(palette.background.weak.color));
-            style.text_color = palette.background.strong.text.scale_alpha(0.5);
-            style.border.color = palette.background.strong.color;
-        }
-    }
-
-    style
+pub fn field(ui: &mut egui::Ui, label: &str, hint: &str, value: &str) -> Option<String> {
+    edit(ui, label, hint, value, false)
 }
 
-pub fn browse_button<'a, Message: 'a + Clone>(on_press: Message) -> Button<'a, Message> {
-    button(text("Browse").size(styles::LABEL_SIZE))
-        .style(secondary_button)
-        .padding([styles::SPACE_5, styles::SPACE_10])
-        .on_press(on_press)
+pub fn secret(ui: &mut egui::Ui, label: &str, hint: &str, value: &str) -> Option<String> {
+    edit(ui, label, hint, value, true)
 }
 
-pub fn card<'a, Message: 'a>(content: Column<'a, Message>) -> Container<'a, Message> {
-    container(content)
-        .width(Length::Fill)
-        .padding(styles::CARD_PADDING)
-        .style(|theme: &Theme| {
-            let palette = theme.extended_palette();
-            iced::widget::container::Style {
-                background: Some(iced::Background::Color(palette.background.weak.color)),
-                border: iced::Border {
-                    radius: styles::CARD_RADIUS.into(),
-                    width: 1.0,
-                    color: palette.background.strong.color,
-                },
-                ..Default::default()
-            }
-        })
+fn edit(ui: &mut egui::Ui, label: &str, hint: &str, value: &str, secret: bool) -> Option<String> {
+    ui.label(label);
+    let mut draft = value.to_owned();
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut draft)
+            .hint_text(hint)
+            .password(secret)
+            .desired_width(f32::INFINITY),
+    );
+    response.changed().then_some(draft)
 }
 
-pub fn section_title<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
-    text(label)
-        .size(styles::SECTION_TITLE_SIZE)
-        .style(text::primary)
-        .into()
+pub fn path(ui: &mut egui::Ui, label: &str, hint: &str, value: &str) -> (Option<String>, bool) {
+    ui.label(label);
+    let mut draft = value.to_owned();
+    let mut changed = false;
+    let mut browse = false;
+    ui.horizontal(|ui| {
+        changed = ui
+            .add(
+                egui::TextEdit::singleline(&mut draft)
+                    .hint_text(hint)
+                    .desired_width((ui.available_width() - 84.0).max(100.0)),
+            )
+            .changed();
+        browse = ui.button("Browse").clicked();
+    });
+    (changed.then_some(draft), browse)
 }
 
-pub fn field_label<'a, Message: 'a>(label: &'a str) -> Element<'a, Message> {
-    text(label)
-        .size(styles::LABEL_SIZE)
-        .style(text::secondary)
-        .into()
+pub fn toggle(ui: &mut egui::Ui, label: &str, current: bool) -> Option<bool> {
+    let mut value = current;
+    ui.checkbox(&mut value, label).changed().then_some(value)
 }
 
-pub fn section<'a, Message: 'a>(
-    title: &'a str,
-    content: Column<'a, Message>,
-) -> Column<'a, Message> {
-    column![section_title(title), content.spacing(styles::SPACE_6)].spacing(styles::SPACE_8)
-}
-
-pub fn form_shell<'a, Message: 'a>(content: Column<'a, Message>) -> Container<'a, Message> {
-    container(card(content.spacing(styles::SECTION_GAP)))
-        .width(Length::Fill)
-        .max_width(styles::MAX_FORM_WIDTH)
-        .center_x(Length::Fill)
+pub fn action(ui: &mut egui::Ui, label: &str, busy: bool) -> bool {
+    let dark = ui.visuals().dark_mode;
+    let accent = if dark {
+        egui::Color32::from_rgb(155, 215, 144)
+    } else {
+        egui::Color32::from_rgb(47, 119, 69)
+    };
+    ui.add_space(12.0);
+    ui.add_enabled(
+        !busy,
+        egui::Button::new(egui::RichText::new(label).strong().color(if dark {
+            egui::Color32::BLACK
+        } else {
+            egui::Color32::WHITE
+        }))
+        .fill(accent)
+        .corner_radius(egui::CornerRadius::same(8))
+        .min_size(egui::vec2(135.0, 36.0)),
+    )
+    .clicked()
 }

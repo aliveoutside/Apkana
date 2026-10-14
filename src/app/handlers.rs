@@ -1,4 +1,4 @@
-use iced::Task;
+use super::Task;
 use std::path::Path;
 
 use crate::config;
@@ -54,7 +54,7 @@ impl ApkanaApp {
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    async move { apktool::decode(&paths, &options) },
+                    move || apktool::decode(&paths, &options),
                     Message::DecodeCompleted,
                 );
             }
@@ -111,13 +111,15 @@ impl ApkanaApp {
                 self.push_info("Starting build...");
                 let options = BuildOptions {
                     project_dir: self.build.project_dir.clone(),
-                    output_apk: self.build.output_apk.clone(),
+                    // Always tell apktool the exact output path; otherwise it
+                    // chooses <project-name>.apk, not the path used by pipeline.
+                    output_apk: self.build_output_apk_path(),
                     force_all: self.build.force_all,
                     strip_debug_directives: self.build.strip_debug_directives,
                 };
                 let paths = self.config.tools.clone();
                 return Task::perform(
-                    async move { apktool::build(&paths, &options) },
+                    move || apktool::build(&paths, &options),
                     Message::BuildCompleted,
                 );
             }
@@ -200,8 +202,28 @@ impl ApkanaApp {
                     output_path: self.merge.output_path.clone(),
                 };
 
+                let paths = self.config.tools.clone();
+                let signing = if self.use_default_debug_signing() {
+                    crate::tools::signer::SignOptions {
+                        apk_path: String::new(),
+                        keystore_path: Self::default_debug_keystore_path()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        alias: "androiddebugkey".into(),
+                        keystore_pass: "android".into(),
+                        key_pass: "android".into(),
+                    }
+                } else {
+                    crate::tools::signer::SignOptions {
+                        apk_path: String::new(),
+                        keystore_path: self.sign.keystore_path.clone(),
+                        alias: self.sign.alias.clone(),
+                        keystore_pass: self.sign.keystore_pass.clone(),
+                        key_pass: self.sign.key_pass.clone(),
+                    }
+                };
                 return Task::perform(
-                    async move { merger::merge(options) },
+                    move || merger::merge(&paths, options, signing),
                     Message::MergeCompleted,
                 );
             }
@@ -247,6 +269,11 @@ impl ApkanaApp {
                 self.settings_draft
                     .get_or_insert_with(|| self.config.tools.clone())
                     .apktool_jar = v;
+            }
+            SettingsMessage::Aapt2Changed(v) => {
+                self.settings_draft
+                    .get_or_insert_with(|| self.config.tools.clone())
+                    .aapt2 = v;
             }
             SettingsMessage::ApksignerChanged(v) => {
                 self.settings_draft

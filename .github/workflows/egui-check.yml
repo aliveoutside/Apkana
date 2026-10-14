@@ -1,0 +1,54 @@
+name: Egui migration checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/egui-ui-migration
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo check --locked
+      - run: cargo test --locked
+
+  merge-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # GitHub-hosted Ubuntu images already ship the Android SDK and build-tools.
+      # setup-android@v3 tries to install the removed SDK package "tools".
+      - name: Configure Android build tools
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          TOOLS="$SDK_ROOT/build-tools/35.0.0"
+          test -x "$TOOLS/aapt2"
+          test -x "$TOOLS/apksigner"
+          test -x "$TOOLS/zipalign"
+          echo "$TOOLS" >> "$GITHUB_PATH"
+      - name: Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev
+      - run: cargo test --locked --test merge_archives -- --ignored
